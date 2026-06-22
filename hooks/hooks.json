@@ -1,0 +1,16 @@
+{
+  "//": "SOFT reminder hook, NOT enforcement. After the orchestrator spawns a worker subagent via the Agent tool (alias Task, renamed from Task in CC 2.1.63), this PostToolUse hook runs verify-reminder.sh, which injects a non-blocking additionalContext nudge to run the verification gate (spawn the `verifier` subagent) for high-stakes work. It emits {} when the spawned agent IS the verifier, to avoid a verify-the-verifier loop. The matcher covers both the current tool name (Agent) and its legacy alias (Task).",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/verify-reminder.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

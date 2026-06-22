@@ -1,11 +1,12 @@
 {
   "name": "agent-orchestrator",
-  "version": "1.0.0",
-  "description": "Orchestrator-only main thread that delegates all work to subagents and agent teams, with a verification-gate pattern and model-tiering guidance",
+  "version": "1.1.0",
+  "description": "Orchestrator-only main thread that delegates all work to subagents and agent teams. Adds a dispatch protocol that routes each task to the best available skill or specialized agent, a verification gate backed by a dedicated `verifier` subagent, model-tiering guidance, and a soft PostToolUse reminder hook that nudges the verification gate after a worker is spawned.",
   "author": {
-    "name": "uc-vc"
+    "name": "uc-vr"
   },
-  "homepage": "https://github.com/uc-vc/agent-orchestrator",
-  "repository": "https://github.com/uc-vc/agent-orchestrator",
-  "license": "MIT"
+  "homepage": "https://github.com/uc-vr/agent-orchestrator",
+  "repository": "https://github.com/uc-vr/agent-orchestrator",
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json"
 }
