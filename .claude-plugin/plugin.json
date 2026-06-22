@@ -1,0 +1,11 @@
+{
+  "name": "agent-orchestrator",
+  "version": "1.0.0",
+  "description": "Orchestrator-only main thread that delegates all work to subagents and agent teams, with a verification-gate pattern and model-tiering guidance",
+  "author": {
+    "name": "uc-vc"
+  },
+  "homepage": "https://github.com/uc-vc/agent-orchestrator",
+  "repository": "https://github.com/uc-vc/agent-orchestrator",
+  "license": "MIT"
+}
