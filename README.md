@@ -15,7 +15,7 @@ Before spawning any worker, the orchestrator runs a routing step:
 1. **Enumerate** what is actually available *this session* — the skills exposed via the Skill tool and the agent types available to the Agent tool, read from the live list injected into context (never a hardcoded/remembered list, which goes stale).
 2. **Match** the task against them — does a specific skill or specialized agent fit better than a generic subagent?
 3. **Prefer the specific over the generic** — invoke the matching skill or specialized agent when there is a clear fit.
-4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing specific fits, it defaults to the **`worker`** agent (the catch-all for minor, well-scoped tasks) and falls back to a general-purpose agent only when `worker` is unsuitable.
+4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing specific fits, it picks the generic agent by task shape — the `worker`-vs-`general-purpose` tie-breaker. It **defaults to the `worker`** agent for any task whose path is already known: well-scoped, mechanical execution — applying a specified edit, a routine refactor, running a command/test, gathering named files (`worker` is the more specific tool here, carrying the craftsmanship principles and a cheaper tier, so it wins these ties). It **reserves `general-purpose`** for open-ended, exploratory, or multi-step research where the path is *not* known up front — locating something when you're unsure of the first hit, or work whose steps only emerge as you go. Tie-breaker question: *is the what-and-where already specified?* If yes → `worker`; if it still needs discovery → `general-purpose`.
 
 This keeps routing **current** (reads the live list) and **auditable** (logs the why).
 
@@ -61,6 +61,26 @@ Or via a marketplace:
 /plugin marketplace add uc-vr/agent-orchestrator
 /plugin install agent-orchestrator
 ```
+
+## Install via Claude
+
+Prefer to let Claude Code do the install for you? Paste the prompt below into a Claude Code session. It uses the plugin mechanism (the repo's intended install path) and then wires up the machine-local settings that a plugin can't carry.
+
+> Install the `agent-orchestrator` Claude Code plugin for me and wire it into my global config. Do this carefully and do not clobber anything:
+>
+> 1. Add the marketplace and install the plugin:
+>    - Run `/plugin marketplace add uc-vr/agent-orchestrator`
+>    - Run `/plugin install agent-orchestrator`
+>    The plugin ships the `orchestrator`, `worker`, and `verifier` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
+> 2. Before changing any settings, back up my global settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak` (skip if the file does not exist).
+> 3. Apply the machine-local settings that do NOT travel in a plugin, merging into existing config rather than overwriting it — never drop my existing hooks, permissions, or other keys:
+>    - Set the orchestrator thread to a strong model (e.g. Opus) via `/config`.
+>    - Set the environment variable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` so agent teams work.
+>    - If I want the orchestrator to be the main thread, point my `agent` setting at it (or note that I can launch with `claude --agent orchestrator`).
+>    - Approve the tool/command permissions the orchestrator and its subagents need (Bash, file writes, network) when prompted.
+> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, and `verifier` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
+>
+> Prerequisite: the reminder hook is a POSIX shell script, so on Windows make sure an `sh` (e.g. Git Bash) is available to Claude Code. `jq` is not required.
 
 ## Post-install manual checklist (these do NOT travel in a plugin)
 
