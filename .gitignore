@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+*.env
+*.key
+*.pem
+*.p12
+*.token
+
+# Local-only Claude config
+.claude/settings.local.json
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log
