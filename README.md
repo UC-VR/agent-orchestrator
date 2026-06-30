@@ -15,9 +15,11 @@ Before spawning any worker, the orchestrator runs a routing step:
 1. **Enumerate** what is actually available *this session* — the skills exposed via the Skill tool and the agent types available to the Agent tool, read from the live list injected into context (never a hardcoded/remembered list, which goes stale).
 2. **Match** the task against them — does a specific skill or specialized agent fit better than a generic subagent?
 3. **Prefer the specific over the generic** — invoke the matching skill or specialized agent when there is a clear fit.
-4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing fits, it says so and uses a general-purpose agent.
+4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing specific fits, it defaults to the **`worker`** agent (the catch-all for minor, well-scoped tasks) and falls back to a general-purpose agent only when `worker` is unsuitable.
 
 This keeps routing **current** (reads the live list) and **auditable** (logs the why).
+
+The repo also ships a **`worker`** agent: the default leaf executor for minor, well-scoped tasks, running on a cheaper model tier with built-in craftsmanship principles (think-before-coding, simplicity, surgical changes, goal-driven verification).
 
 ### 2. Verification gate (backed by the `verifier` subagent)
 

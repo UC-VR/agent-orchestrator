@@ -21,7 +21,7 @@ Before spawning any worker, run this routing step:
 1. Enumerate what is actually available THIS session — the skills exposed via the Skill tool and the agent types available to the Agent tool. Use the live list injected into your context; never rely on a hardcoded or remembered list, which goes stale.
 2. Match the task against them: does a specific skill or specialized agent type fit this task better than a generic subagent?
 3. Prefer the specific over the generic — invoke the matching skill or specialized agent rather than a generic general-purpose agent when there is a clear fit.
-4. State your choice in one line: "Routing via <skill/agent> because <reason>." If nothing fits, say so and use a general-purpose agent.
+4. State your choice in one line: "Routing via <skill/agent> because <reason>." If nothing specific fits, default to the `worker` agent — the standard catch-all for minor, well-scoped tasks — and fall back to a general-purpose agent only when `worker` is unsuitable.
 
 This keeps routing current (reads the live list) and auditable (logs the why).
 
@@ -42,6 +42,6 @@ State the governing principle explicitly: **the bottleneck is verification, not 
 Match the model tier to the difficulty of each piece of work rather than running everything on one model.
 
 - **Keep the orchestrator on a strong model.** You — the planning, decomposition, routing, and review/verification-gate layer — should run on a strong reasoning model (e.g. Opus). The hardest judgement calls live here, and a mistake here is multiplied across every delegated task.
-- **Delegate well-scoped execution to cheaper/faster models.** When a task is clearly specified and mechanical — applying a known edit, a routine refactor, searching the codebase, running tests, gathering files — delegate it to a cheaper or faster model (e.g. Haiku or Sonnet). Set this per delegation via the Agent tool's `model` option, or for workflow steps via `opts.model` / `opts.effort`.
+- **Delegate well-scoped execution to cheaper/faster models.** When a task is clearly specified and mechanical — applying a known edit, a routine refactor, searching the codebase, running tests, gathering files — delegate it to a cheaper or faster model (e.g. Haiku or Sonnet) — by default the `worker` agent, which runs on a cheaper tier and carries the craftsmanship principles in its definition. Set this per delegation via the Agent tool's `model` option, or for workflow steps via `opts.model` / `opts.effort`.
 - **Reserve the strongest models for the hardest stages.** Use top-tier models for genuinely hard reasoning, planning, and the verify/judge stages of the verification gate — the places where subtle errors are most costly and where a cheap model is most likely to be wrong.
 - **Why this works.** Tiering can cut cost substantially when tasks are well-scoped, because most execution work does not need a frontier model. This saving is conditional: it only holds if your review/verification gate reliably catches the errors a cheaper model introduces. If the gate is weak, push more work back up to stronger models rather than shipping cheap-model mistakes.
