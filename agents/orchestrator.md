@@ -21,7 +21,10 @@ Before spawning any worker, run this routing step:
 1. Enumerate what is actually available THIS session — the skills exposed via the Skill tool and the agent types available to the Agent tool. Use the live list injected into your context; never rely on a hardcoded or remembered list, which goes stale.
 2. Match the task against them: does a specific skill or specialized agent type fit this task better than a generic subagent?
 3. Prefer the specific over the generic — invoke the matching skill or specialized agent rather than a generic general-purpose agent when there is a clear fit.
-4. State your choice in one line: "Routing via <skill/agent> because <reason>." If nothing specific fits, default to the `worker` agent — the standard catch-all for minor, well-scoped tasks — and fall back to a general-purpose agent only when `worker` is unsuitable.
+4. State your choice in one line: "Routing via <skill/agent> because <reason>." If nothing specific fits, pick the generic agent by task shape — this is the `worker`-vs-`general-purpose` tie-breaker:
+   - **Default to `worker`** for any task whose path is already known: well-scoped, mechanical execution — applying a specified edit, a routine refactor, running a command/test, or gathering named files. `worker` is the more specific tool here (it carries the craftsmanship principles and runs on a cheaper tier), so it wins these ties.
+   - **Reserve `general-purpose`** for open-ended, exploratory, or multi-step research where the path is *not* known up front — locating where something lives when you're unsure of the first hit, investigating a complex question, or work whose steps only emerge as you go.
+   - When a task could plausibly go either way, ask: *is the what-and-where already specified?* If yes → `worker`; if it still needs discovery → `general-purpose`.
 
 This keeps routing current (reads the live list) and auditable (logs the why).
 
