@@ -1,7 +1,7 @@
 {
   "name": "agent-orchestrator",
-  "version": "1.1.0",
-  "description": "Orchestrator-only main thread that delegates all work to subagents and agent teams. Adds a dispatch protocol that routes each task to the best available skill or specialized agent, a verification gate backed by a dedicated `verifier` subagent, model-tiering guidance, and a soft PostToolUse reminder hook that nudges the verification gate after a worker is spawned.",
+  "version": "1.2.0",
+  "description": "Orchestrator-only main thread that delegates all work to subagents and agent teams. Adds a dispatch protocol that routes each task to the best available skill or specialized agent, a verification gate backed by a dedicated `verifier` subagent, model-tiering guidance, a soft PostToolUse reminder hook that nudges the verification gate after a worker is spawned, and a v2 self-learning journal loop: a SessionEnd hook journals each session to `.claude/journal/` and drops a pending-review marker; a SessionStart hook reads the marker and the `<!-- learning -->` count in `LEARNINGS.md` to emit a PROPOSE-not-apply debrief nudge (normal review) or an escalated reconcile-pass prompt when accumulated learnings hit a configurable threshold (default 10, env `SELF_LEARNING_RECONCILE_THRESHOLD`); a `skill-overlap.sh` dedupe gate checks candidates against existing skills/recipes before any skill is added or updated; and a manual `reconcile-learnings` skill consolidates the journal on demand. Zero network calls, zero extra dependencies.",
   "author": {
     "name": "uc-vr"
   },

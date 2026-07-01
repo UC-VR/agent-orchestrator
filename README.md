@@ -6,7 +6,7 @@ A Claude Code plugin that packages an **orchestrator-only** agent: a main thread
 
 The orchestrator philosophy is **delegate everything**. The orchestrator's job is planning, routing, and judgement — not execution. All file edits, shell commands, builds, tests, and research are performed by subagents or teams it spawns. The orchestrator uses read-only tools (Read/Glob/Grep) solely to scope work and write good delegation prompts, then relays a clear synthesized answer to you.
 
-This plugin adds four patterns on top of plain delegation.
+This plugin adds five patterns on top of plain delegation.
 
 ### 1. Dispatch protocol (skill & agent matching)
 
@@ -46,6 +46,55 @@ This can cut cost substantially on well-scoped tasks — conditional on the revi
 ### 4. Reminder hook (soft nudge, not enforcement)
 
 The plugin registers a `PostToolUse` hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`) on the subagent-spawning tool (`Agent`, with its legacy alias `Task`). After a worker is spawned, the hook injects a **non-blocking** `additionalContext` reminder to run the verification gate for high-stakes work. It is a **soft reminder only** — it never blocks or fails a tool call, and the orchestrator is free to skip it for trivial/read-only work. The hook emits a no-op (`{}`) when the spawned agent *is* the `verifier`, so it never nags you to verify the verifier (which would invite an infinite loop). The script depends only on POSIX `sh` + `grep`/`sed` (no `jq` requirement) and defensively reads several possible agent-type field names.
+
+### 5. Self-learning journal loop (SessionEnd + SessionStart + reconciler)
+
+The plugin ships a v2 self-learning loop that accumulates session knowledge, surfaces it for review at the next session start, and periodically triggers a deeper consolidation into skill/recipe improvements — all without touching the network, without extra dependencies, and without auto-applying anything.
+
+#### The two-hook cycle
+
+**SessionEnd (`hooks/session-journal.sh`):** at the end of every session, this hook reads `cwd`, `session_id`, `reason`, and `transcript_path` from the hook payload and appends a timestamped entry to `.claude/journal/<YYYY-MM-DD>-<session_id>.md` inside the project root. It also appends a line to `.claude/.skill-update-pending` — a simple counter file that records how many sessions have passed since the last review. Both writes are append-only and non-blocking (always exit 0).
+
+**SessionStart (`hooks/session-start-skill-review.sh`):** at the start of the next session, this hook reads the pending-marker and counts the `<!-- learning -->` sentinel lines in `.claude/journal/LEARNINGS.md`. It then chooses one of three branches:
+
+- **Branch A — reconcile pass due:** the delta between the current learning count and the last-reconciled count has reached or exceeded the threshold (`SELF_LEARNING_RECONCILE_THRESHOLD`, default 10). The hook resets the counter and emits an escalated `additionalContext` nudge asking Claude to do a full consolidation pass via the `reconcile-learnings` skill.
+- **Branch B — normal review:** `.skill-update-pending` exists (one or more sessions recorded since the last review). The hook consumes the marker and emits a PROPOSE-not-apply debrief nudge asking Claude to read the recent journal entries, synthesise learnings, append a `<!-- learning -->` block to `LEARNINGS.md`, and run the dedupe gate before proposing any skill change.
+- **Branch C — silent:** no marker and no threshold breach; the hook exits without output.
+
+The hook is suppressed when `SessionStart` fires due to context compaction (`source == "compact"`), so compaction restarts do not generate spurious nudges.
+
+#### Enriched LEARNINGS.md capture
+
+Each learning block appended to `.claude/journal/LEARNINGS.md` must begin with a line containing exactly `<!-- learning -->` (the sentinel the loop counts), followed by a heading and four fields:
+
+```
+<!-- learning -->
+## YYYY-MM-DD · session <id>
+**Learned:** ...
+**Decided:** ...
+**Candidate skill/recipe updates:** ...
+**Dedupe check:** ...
+```
+
+The sentinel is counted with `grep -c -x -F '<!-- learning -->'` (whole-line, fixed-string, case-sensitive). Do not vary it.
+
+#### `skill-overlap.sh` dedupe gate
+
+Before any skill or recipe is added or updated, `hooks/skill-overlap.sh` searches `~/.claude/skills`, `~/.claude/plugins`, `.claude/skills`, and `.claude/recipes` for `.md` files matching the candidate keywords. It prints hits (up to 20 per root per keyword) and reminds Claude to PROPOSE-not-apply rather than auto-edit. The script depends only on `bash`+`grep`+`find` (no network, no `jq`).
+
+#### Reconciler threshold and env knob
+
+The reconcile threshold defaults to 10 new `<!-- learning -->` sentinels since the last pass. Override it per-project or globally by setting `SELF_LEARNING_RECONCILE_THRESHOLD` in your environment (e.g. `export SELF_LEARNING_RECONCILE_THRESHOLD=5`). Non-numeric values fall back to 10.
+
+#### Manual `reconcile-learnings` skill
+
+The `skills/reconcile-learnings/SKILL.md` skill ships a step-by-step reconcile procedure you can invoke on demand (trigger phrases: "reconcile learnings", "consolidate learnings", etc.). It walks through reading the journal, running `skill-overlap.sh` for each candidate, proposing consolidated edits via `skill-creator`, and resetting the reconcile counter.
+
+#### PROPOSE-not-apply / zero-network / zero-dep properties
+
+- **PROPOSE-not-apply:** no hook or skill auto-edits any file. All proposed changes go through `skill-creator` and require explicit review.
+- **Zero network calls:** every script uses only local file I/O, `grep`, `wc`, `date`, `node` (for JSON parsing the hook payload), and `find`. No outbound requests.
+- **Zero extra dependencies beyond `bash` and `node`:** `node` is assumed present because Claude Code itself requires it. No `jq`, no Python, no curl.
 
 ## How to add it
 
@@ -93,6 +142,8 @@ A plugin ships the agent/hook definitions only. The following are machine-local 
 - [ ] **Copy any status line script.** If you use a custom status line, copy the script over and re-point your settings at it.
 - [ ] **Set voice / marketplaces / other local prefs.** Re-apply voice settings, re-add any plugin marketplaces, and any other per-machine configuration you rely on.
 - [ ] **(Hook prerequisite)** The reminder hook runs a POSIX shell script. On Windows, ensure a `sh` (e.g. Git Bash) is available to Claude Code so the hook can execute. `jq` is **not** required.
+- [ ] **(Self-learning: gitignore entries)** The self-learning loop writes files that should not be committed to version control: `.claude/journal/`, `.claude/.skill-update-pending`, and `.claude/.reconcile-state`. A plugin cannot set git config, so you must add these to your global gitignore yourself. Add them via `core.excludesFile`: run `git config --global core.excludesFile ~/.gitignore_global` (if not already set), then append `.claude/journal/`, `.claude/.skill-update-pending`, and `.claude/.reconcile-state` to that file.
+- [ ] **(Self-learning: avoid double-registration)** If you already have `SessionStart` or `SessionEnd` hooks hand-wired in `~/.claude/settings.json` pointing at the same scripts (e.g. from a prior hand-copy install), installing this plugin will double-register them — Claude Code will run the hook twice per event. When migrating from a hand-wired install to the plugin, remove the hand-wired `SessionStart`/`SessionEnd` entries from `~/.claude/settings.json` before or immediately after installing the plugin.
 
 ## Usage
 
