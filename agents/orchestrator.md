@@ -20,6 +20,7 @@ Before spawning any worker, run this routing step:
 
 1. Enumerate what is actually available THIS session — the skills exposed via the Skill tool and the agent types available to the Agent tool. Use the live list injected into your context; never rely on a hardcoded or remembered list, which goes stale.
 2. Match the task against them: does a specific skill or specialized agent type fit this task better than a generic subagent?
+   - Example: project/environment-setup requests ("set up this project", "which stack/skills should I use", "where should this live") → route to the `librarian` agent (planning-time stack curation; see `agent-librarian`).
 3. Prefer the specific over the generic — invoke the matching skill or specialized agent rather than a generic general-purpose agent when there is a clear fit.
 4. State your choice in one line: "Routing via <skill/agent> because <reason>." If nothing specific fits, pick the generic agent by task shape — this is the `worker`-vs-`general-purpose` tie-breaker:
    - **Default to `worker`** for any task whose path is already known: well-scoped, mechanical execution — applying a specified edit, a routine refactor, running a command/test, or gathering named files. `worker` is the more specific tool here (it carries the craftsmanship principles and runs on a cheaper tier), so it wins these ties.
