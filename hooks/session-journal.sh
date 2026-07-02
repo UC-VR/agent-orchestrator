@@ -108,8 +108,16 @@ PROMPT
 # Self-cleaning launcher: run claude reading the prompt, then remove both files.
 # permission-mode: bypassPermissions is REQUIRED (not acceptEdits) because the
 # target LEARNINGS.md lives under ~/.claude/, which Claude Code guards as a
-# "sensitive path"; acceptEdits is hard-blocked there in non-interactive mode
-# (verified empirically). Blast radius stays contained via --allowedTools.
+# "sensitive path"; writes there are hard-blocked in non-interactive (-p) mode.
+# Tested 2026-07-02: acceptEdits alone AND acceptEdits + an explicit scoped
+# permissions.allow rule for ~/.claude/journal/** (Edit()/Write() path-glob
+# rules in settings.json) were BOTH still blocked by the sensitive-path guard --
+# an explicit scoped allow rule does NOT defeat the ~/.claude/** guard. Controls:
+# the same acceptEdits config wrote fine to a NON-sensitive path, and
+# bypassPermissions wrote fine to the same journal path, isolating the
+# sensitive-path guard as the sole blocker. bypassPermissions is therefore
+# required; blast radius stays contained via --allowedTools "Read" "Edit"
+# "Write". Do not re-litigate the acceptEdits+allow-rule route without new evidence.
 # stdin is closed (< /dev/null) so `claude -p` does not stall waiting on it.
 cat > "$launcher_file" <<LAUNCHER || exit 0
 #!/usr/bin/env bash
