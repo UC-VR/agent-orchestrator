@@ -80,7 +80,9 @@ The sentinel is counted with `grep -c -x -F '<!-- learning -->'` (whole-line, fi
 
 #### `skill-overlap.sh` dedupe gate
 
-Before any skill or recipe is added or updated, `hooks/skill-overlap.sh` searches `~/.claude/skills`, `~/.claude/plugins`, `.claude/skills`, and `.claude/recipes` for `.md` files matching the candidate keywords. It prints hits (up to 20 per root per keyword) and reminds Claude to PROPOSE-not-apply rather than auto-edit. The script depends only on `bash`+`grep`+`find` (no network, no `jq`).
+Before any skill or recipe is added or updated, `scripts/skill-overlap.sh` searches `~/.claude/skills`, `~/.claude/plugins`, `.claude/skills`, and `.claude/recipes` for `.md` files matching the candidate keywords. It prints hits (up to 20 per root per keyword) and reminds Claude to PROPOSE-not-apply rather than auto-edit. The script depends only on `bash`+`grep`+`find` (no network, no `jq`).
+
+It lives in `scripts/`, not `hooks/`, because it's a manual CLI helper invoked by the reconcile-learnings skill — it is deliberately not wired into `hooks.json`.
 
 #### Reconciler threshold and env knob
 

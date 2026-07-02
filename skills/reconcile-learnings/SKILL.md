@@ -50,14 +50,14 @@ If the file does not exist or contains no `<!-- learning -->` blocks, report
 For each candidate update, run the dedupe helper:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/../../hooks/skill-overlap.sh <keywords>
+bash ${CLAUDE_SKILL_DIR}/../../scripts/skill-overlap.sh <keywords>
 ```
 
 `${CLAUDE_SKILL_DIR}` resolves to this skill's own directory
-(`skills/reconcile-learnings/`), so `../../hooks/` points at the `hooks/`
+(`skills/reconcile-learnings/`), so `../../scripts/` points at the `scripts/`
 directory shipped with the agent-orchestrator plugin. For a hand-copied install
-where the plugin's hooks were not installed, use
-`~/.claude/hooks/skill-overlap.sh` instead.
+where the plugin's scripts were not installed, use
+`~/.claude/scripts/skill-overlap.sh` instead.
 
 Replace `<keywords>` with 1-3 terms describing the candidate (e.g.,
 `bash error-handling`, `google sheets append`). It searches `SKILL.md` and
