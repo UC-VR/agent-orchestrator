@@ -7,8 +7,9 @@
 # high-stakes work. It does NOT block, fail, or force anything — Claude is free to
 # ignore the nudge. The orchestrator's own judgement still decides whether to verify.
 #
-# Loop-guard: if the spawned agent IS the verifier, we emit `{}` (no reminder) so we
-# never nag the model to verify the verifier — which would invite an infinite loop.
+# Loop-guard: if the spawned agent IS the verifier, judge, or scout, we emit `{}`
+# (no reminder) so we never nag the model to verify the verifier — which would
+# invite an infinite loop.
 #
 # Input: the PostToolUse hook JSON arrives on stdin.
 # Output (stdout): either
@@ -33,8 +34,10 @@ agent_type="$(printf '%s' "$input" \
 # Normalize to lowercase for the comparison.
 agent_type_lc="$(printf '%s' "$agent_type" | tr '[:upper:]' '[:lower:]')"
 
-# Loop-guard: spawning the verifier itself -> no reminder.
-if [ "$agent_type_lc" = "verifier" ]; then
+# Loop-guard: spawning verifier/judge/scout -> no reminder (all three are
+# read-only checking/advisory roles; nagging them to "go verify" recreates
+# the verify-the-verifier loop).
+if [ "$agent_type_lc" = "verifier" ] || [ "$agent_type_lc" = "judge" ] || [ "$agent_type_lc" = "scout" ]; then
   printf '%s\n' '{}'
   exit 0
 fi
