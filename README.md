@@ -98,6 +98,8 @@ The `skills/reconcile-learnings/SKILL.md` skill ships a step-by-step reconcile p
 
 ## How to add it
 
+> **Preferred install:** via the `vr-orchestra` marketplace (`UC-VR/vr-agent-creator`). The standalone marketplace here remains for backwards compatibility.
+
 Install directly from git:
 
 ```
