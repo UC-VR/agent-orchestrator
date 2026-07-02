@@ -107,8 +107,8 @@ Install directly from git:
 Or via a marketplace:
 
 ```
-/plugin marketplace add uc-vr/agent-orchestrator
-/plugin install agent-orchestrator
+/plugin marketplace add https://github.com/UC-VR/agent-orchestrator.git
+/plugin install agent-orchestrator@agent-orchestrator
 ```
 
 ## Install via Claude
@@ -118,8 +118,8 @@ Prefer to let Claude Code do the install for you? Paste the prompt below into a 
 > Install the `agent-orchestrator` Claude Code plugin for me and wire it into my global config. Do this carefully and do not clobber anything:
 >
 > 1. Add the marketplace and install the plugin:
->    - Run `/plugin marketplace add uc-vr/agent-orchestrator`
->    - Run `/plugin install agent-orchestrator`
+>    - Run `/plugin marketplace add https://github.com/UC-VR/agent-orchestrator.git`
+>    - Run `/plugin install agent-orchestrator@agent-orchestrator`
 >    The plugin ships the `orchestrator`, `worker`, and `verifier` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
 > 2. Before changing any settings, back up my global settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak` (skip if the file does not exist).
 > 3. Apply the machine-local settings that do NOT travel in a plugin, merging into existing config rather than overwriting it — never drop my existing hooks, permissions, or other keys:

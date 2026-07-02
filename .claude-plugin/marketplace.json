@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "agent-orchestrator",
+  "description": "Orchestrator role-pack: orchestrator main thread, adversarial verifier gate, and worker subagent. Install into any domain agent to enable delegation and verification.",
+  "owner": {
+    "name": "uc-vr",
+    "email": "vadim.ryckov@infinox.com"
+  },
+  "plugins": [
+    {
+      "name": "agent-orchestrator",
+      "description": "Orchestrator role-pack: orchestrator main thread, adversarial verifier gate, and worker subagent. Install into any domain agent to enable delegation and verification.",
+      "version": "1.2.0",
+      "source": "./",
+      "author": {
+        "name": "uc-vr"
+      },
+      "category": "productivity"
+    }
+  ]
+}
