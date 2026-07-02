@@ -12,7 +12,6 @@
         ]
       }
     ],
-    "//SessionEnd": "Self-learning loop: at session end, append an entry to the per-project .claude/journal/<date>-<session>.md file and drop a .claude/.skill-update-pending marker so the next SessionStart knows to prompt a debrief.",
     "SessionEnd": [
       {
         "hooks": [
@@ -23,7 +22,6 @@
         ]
       }
     ],
-    "//SessionStart": "Self-learning loop: at session start, check .skill-update-pending and the <!-- learning --> count in LEARNINGS.md. Emits an additionalContext nudge to debrief+capture (Branch B) or a reconcile-pass prompt when the learning delta hits the threshold (Branch A, default 10). Silent otherwise (Branch C). Suppressed on context-compaction restarts.",
     "SessionStart": [
       {
         "hooks": [
