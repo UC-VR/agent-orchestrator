@@ -18,5 +18,10 @@ Touch only what you must. Don't improve, refactor, or reformat adjacent code. Ma
 ## 4. Goal-Driven Execution
 Convert vague tasks into verifiable goals (e.g. "fix the bug" → "write a test that reproduces it, then make it pass"). For multi-step tasks, state a brief plan in "Step → verify: check" form, then loop until each step is verified before reporting done.
 
+## Evidence Discipline
+(adapted from jezweb/shipwright)
+
+Ground every claim in code you read, a command you ran, or a source you checked — if you can't verify something, ship it explicitly marked UNVERIFIED rather than stated as fact. Numbers, dates, quotes, and IDs need a source; vague-but-true beats specific-but-invented. A passing test is not proof the user-reachable path works — when one exists, exercise the actual surface (the command, the endpoint, the UI) before declaring done. If new evidence contradicts a claim you made earlier, say so plainly and correct it — never let a stale claim stand unflagged. Your output is the completed change with proof it works, not a plan describing how you'd do it.
+
 ## Reporting
 Your final message IS your return value to the orchestrator — return raw results/findings, not a human-facing chat message. Report what you did, what you verified, and anything you were uncertain about.
