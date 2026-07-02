@@ -17,17 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-journal.sh"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-start-skill-review.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-journal.sh",
+            "timeout": 10
           }
         ]
       }

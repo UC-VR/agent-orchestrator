@@ -5,71 +5,139 @@ description: "Reconcile the self-learning journal: consolidate <!-- learning -->
 
 # reconcile-learnings
 
-Manual trigger for the v2 self-learning loop reconcile pass. Run this when prompted by the escalated SessionStart nudge, or any time you want to consolidate accumulated learnings into skill/recipe improvements.
+Consolidate accumulated learnings into skill/recipe improvements. This is
+triggered by the **weekly scheduled task** (`claude-weekly-reconcile`, Sundays
+09:00) or by **manual invocation** any time you want to reconcile.
 
-## Procedure (PROPOSE-not-apply; never auto-apply changes)
+**PROPOSE-not-apply throughout.** You never auto-apply changes. Every proposed
+edit goes through the `skill-creator` skill and is reviewed before it takes
+effect. "Nothing worth capturing" is a valid, expected outcome — do not force a
+proposal when the learnings do not warrant one.
+
+The global learnings file is:
+
+```
+~/.claude/journal/LEARNINGS.md
+```
+
+## Procedure
 
 ### 1. Read the learning journal
 
-Open `.claude/journal/LEARNINGS.md` and locate every block marked with the sentinel:
+Open the GLOBAL file `~/.claude/journal/LEARNINGS.md` and locate every
+block marked with the sentinel:
 
 ```
 <!-- learning -->
 ```
 
 Each block follows this structure:
+
 ```
 <!-- learning -->
 ## YYYY-MM-DD · session <id>
 **Learned:** ...
 **Decided:** ...
-**Candidate skill/recipe updates:** ...
+**Candidate skill updates:** ...
 **Dedupe check:** ...
 ```
 
-Also read recent session journals in `.claude/journal/` (files named `<date>-<session_id>.md`) for context on what those sessions covered.
+If the file does not exist or contains no `<!-- learning -->` blocks, report
+"nothing to reconcile" and stop.
 
-### 2. Cross-reference candidates against existing skills
+### 2. Cross-reference candidates against existing skills (dedupe gate)
 
-For each candidate skill/recipe update identified in step 1, run the dedupe helper:
+For each candidate update, run the dedupe helper:
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/../../hooks/skill-overlap.sh <keywords>
 ```
 
-`${CLAUDE_SKILL_DIR}` resolves to this skill's own directory (`skills/reconcile-learnings/`), so `../../hooks/` points at the `hooks/` directory shipped with the agent-orchestrator plugin. For a hand-copied install where the plugin's hooks were not installed, use `~/.claude/hooks/skill-overlap.sh` instead.
+`${CLAUDE_SKILL_DIR}` resolves to this skill's own directory
+(`skills/reconcile-learnings/`), so `../../hooks/` points at the `hooks/`
+directory shipped with the agent-orchestrator plugin. For a hand-copied install
+where the plugin's hooks were not installed, use
+`~/.claude/hooks/skill-overlap.sh` instead.
 
-Replace `<keywords>` with 1-3 terms describing the candidate (e.g., `bash error-handling`, `google sheets append`).
+Replace `<keywords>` with 1-3 terms describing the candidate (e.g.,
+`bash error-handling`, `google sheets append`). It searches `SKILL.md` and
+`references/*.md` across the known skill roots and lists overlapping skills,
+de-duplicated by skill.
 
 Interpret the output:
-- **Overlap found** — refine the existing skill rather than creating a new one.
+- **Overlap found** — refine the existing skill; do NOT add a new one.
 - **Contradiction found** — flag the conflict explicitly in your proposal.
-- **No overlap** — safe to propose as a new skill/recipe, but verify it isn't covered by a skill with a different name.
+- **No overlap** — a new reference or skill may be warranted, but still verify it
+  isn't covered by a skill under a different name.
 
-### 3. PROPOSE a consolidated set of edits
+### 3. Decide the edit using the PATCH-OVER-CREATE hierarchy
 
-Group related learnings from multiple sessions into coherent updates. For each proposed change:
+Prefer the least-invasive change that fits. Work down this hierarchy and stop at
+the first level that applies:
+
+1. **Patch the most-relevant existing skill** — amend its `SKILL.md` in place.
+2. **Patch an umbrella/parent skill** — if one skill already covers the area,
+   extend it rather than creating a sibling.
+3. **Add a `references/<topic>.md`** file under an existing skill — prefer this
+   over a new top-level skill when the learning is a sub-topic of an existing
+   capability.
+4. **Create a brand-new skill** — last resort only, when none of the above fit.
+
+### 4. Refusals (hard rules)
+
+- **Refuse instance-specific skill names.** Do not propose skills named after a
+  single session, project, ticket, or one-off task. A skill must name a
+  generalizable, reusable capability.
+- **Refuse duplicates.** Do not propose a skill that duplicates an
+  already-installed skill. You MUST have run `skill-overlap.sh` (step 2) first;
+  if it shows an overlap, patch the existing skill instead.
+
+### 5. Backup → validate → rollback envelope (per proposed edit)
+
+For every edit you draft against an existing skill file:
+
+- **Backup / note pre-edit state.** Before drafting the change, record the
+  pre-edit content or its exact location (path + the lines you would change) so
+  the original can be restored if the proposal is rejected. Do not overwrite the
+  only copy of the original.
+- **Validate.** Confirm the proposed result is well-formed: valid YAML
+  frontmatter (`name`, `description` present and intact), the sentinel/markdown
+  structure is unbroken, and the change does not break the skill's triggering or
+  contradict its existing guidance.
+- **Rollback plan.** State explicitly how to undo the change (restore from the
+  noted pre-edit content / backup path) if it is rejected downstream.
+
+### 6. Provenance stamp (per proposed edit)
+
+Every PROPOSED edit must carry provenance so reconciled changes are traceable:
+
+```yaml
+metadata:
+  origin: reconciled
+  date: <YYYY-MM-DD>
+```
+
+Add this to the target skill's frontmatter (or an equivalent metadata field the
+skill format supports). New `references/*.md` files should note the same
+`origin: reconciled` / `date` at the top.
+
+### 7. PROPOSE the consolidated set of edits
+
+Group related learnings from multiple sessions into coherent updates. For each
+proposed change:
 
 - Invoke the `skill-creator` skill to scaffold or update the target skill/recipe.
-- State what changed and why (reference the source learning blocks by date/session).
-- Resolve contradictions between learnings explicitly — do not silently drop one side.
-- Prefer refining existing skills over adding overlapping new ones.
+  **Never auto-apply** — proposals go through `skill-creator` and are reviewed
+  before taking effect.
+- State what changed and why, referencing the source learning blocks by
+  date/session.
+- Resolve contradictions between learnings explicitly — do not silently drop one
+  side.
+- Prefer refining existing skills over adding overlapping new ones (see the
+  hierarchy in step 3).
 
-**Never auto-apply.** All changes go through `skill-creator` and are reviewed before taking effect.
-
-### 4. Reset the reconcile counter
-
-After completing the reconcile pass, update the counter so the hook does not immediately re-trigger:
-
-```bash
-grep -c -x -F '<!-- learning -->' .claude/journal/LEARNINGS.md > .claude/.reconcile-state
-```
-
-Run this from the project root (the directory where `.claude/` lives). If `LEARNINGS.md` does not exist yet, write `0`:
-
-```bash
-echo 0 > .claude/.reconcile-state
-```
+If, after review, none of the learnings warrant a change, honestly report
+**"nothing worth capturing"** and make no proposal. That is a correct outcome.
 
 ## Sentinel
 
@@ -79,4 +147,5 @@ The exact sentinel string used throughout this loop is:
 <!-- learning -->
 ```
 
-Every learning block in `LEARNINGS.md` must begin with a line containing exactly this string. The SessionStart hook counts these with `grep -c -x -F '<!-- learning -->'`. Do not vary the sentinel.
+Every learning block in `LEARNINGS.md` begins with a line containing exactly this
+string. Do not vary the sentinel.
