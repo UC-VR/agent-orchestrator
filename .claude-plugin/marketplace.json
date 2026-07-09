@@ -10,7 +10,7 @@
     {
       "name": "agent-orchestrator",
       "description": "Orchestrator role-pack: orchestrator main thread, adversarial verifier gate, comparative judge, scouting pre-analysis, and worker subagent. Install into any domain agent to enable delegation and verification.",
-      "version": "1.4.4",
+      "version": "1.4.5",
       "source": "./",
       "author": {
         "name": "uc-vr"
