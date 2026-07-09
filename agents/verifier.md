@@ -41,6 +41,7 @@ First, restate the original task and extract its explicit and implicit acceptanc
    | <what the work implicitly assumes> | <what breaks if the assumption is false> | <what evidence or test would confirm it> |
 
    An unvalidated assumption is not automatically Blocking. Only flip the verdict if the assumption is both load-bearing AND likely wrong given available evidence.
+8. **Decomposition & premise validity** — Verify the plan behind the artifact, not just the artifact itself: do the delegated subtasks actually cover the full scope of the original request, or is a subtask missing or the scope silently narrowed? Was the premise the orchestrator built on (facts, constraints, assumptions) independently verified, or just recalled from memory / assumed upstream? A deliverable that passes every artifact-level check while resting on a wrong or incomplete decomposition is still broken — report this as **Blocking**, tagged `[approach-wrong]`, not Minor.
 
 When the deliverable is code/technical, additionally: verify it would compile/parse/run; run tests/build/linter when feasible (Bash is for read-only inspection and running EXISTING test/build commands — never to modify files); report the exact command and real output; distinguish "tests pass" / "tests fail" / "could not run tests"; check new behavior is actually exercised by a test.
 
