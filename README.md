@@ -148,6 +148,7 @@ A plugin ships the agent/hook definitions only. The following are machine-local 
 - [ ] **(Hook prerequisite)** The reminder hook runs a POSIX shell script. On Windows, ensure a `sh` (e.g. Git Bash) is available to Claude Code so the hook can execute. `jq` is **not** required.
 - [ ] **(Self-learning: gitignore entries)** The self-learning loop writes files that should not be committed to version control: `.claude/journal/`, `.claude/.skill-update-pending`, and `.claude/.reconcile-state`. A plugin cannot set git config, so you must add these to your global gitignore yourself. Add them via `core.excludesFile`: run `git config --global core.excludesFile ~/.gitignore_global` (if not already set), then append `.claude/journal/`, `.claude/.skill-update-pending`, and `.claude/.reconcile-state` to that file.
 - [ ] **(Self-learning: avoid double-registration)** If you already have `SessionStart` or `SessionEnd` hooks hand-wired in `~/.claude/settings.json` pointing at the same scripts (e.g. from a prior hand-copy install), installing this plugin will double-register them — Claude Code will run the hook twice per event. When migrating from a hand-wired install to the plugin, remove the hand-wired `SessionStart`/`SessionEnd` entries from `~/.claude/settings.json` before or immediately after installing the plugin.
+- [ ] **Version stamp check.** Version stamp in every `agents/*.md` first body line MUST equal `plugin.json` version — grep-check before tagging.
 
 ## Usage
 
