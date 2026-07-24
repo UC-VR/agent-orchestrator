@@ -2,7 +2,7 @@
 # PreToolUse gate: enforce model-tier policy on Agent/Task spawns. FAIL-OPEN on any error.
 import sys, json
 
-UNPINNED = {"general-purpose", "explore", "plan", "claude"}
+UNPINNED = {"general-purpose", "explore", "plan", "claude", "claude-code-guide"}
 FORBIDDEN = ("haiku", "fable")
 
 def deny(reason):
