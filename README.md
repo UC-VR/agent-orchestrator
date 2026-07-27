@@ -33,13 +33,14 @@ Governing principle: **the bottleneck is verification, not generation.** Never d
 
 The `verifier` is shipped as its own agent (`agents/verifier.md`): it checks, it does not fix (no Write/Edit tools by design), it never delegates, and it never rubber-stamps.
 
-### 3. Model-tiering guidance
+### 3. Model-tiering guidance (enforced)
 
-The orchestrator matches model strength to task difficulty:
+The orchestrator matches model strength to task difficulty — and since v1.6.0 this is mechanically enforced, not just prose:
 
-- Keep the **orchestrator itself on a strong model** (e.g. Opus) for planning, decomposition, and the review/verification gate.
-- Delegate **well-scoped execution** (edits, mechanical refactors, searches, test runs) to **cheaper/faster models** (e.g. Haiku/Sonnet) via the Agent tool's `model` option or Workflow `opts.model` / `opts.effort`. (The `verifier` itself runs on Sonnet.)
-- Reserve the **strongest models for the hardest reasoning/verify/judge stages**.
+- The **orchestrator main thread stays on the strongest tier (Fable/Opus)**; it never spawns a subagent on that tier.
+- Every Agent-tool spawn must carry an **explicit `model` param** — no inheritance.
+- **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku is never used**.
+- A `PreToolUse` **`model-tier-gate`** hook denies any spawn with `haiku`/`fable`, and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
 
 This can cut cost substantially on well-scoped tasks — conditional on the review gate reliably catching cheap-model errors.
 
