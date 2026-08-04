@@ -1,38 +1,101 @@
 #!/usr/bin/env bash
 # SessionStart hook: agent-orchestrator version-check
 #
-# Compares the installed plugin version (this repo's own
-# .claude-plugin/plugin.json, or plugin.json at repo root as a fallback) against
-# the version pinned for agent-orchestrator in the vr-orchestra marketplace
-# manifest. Fail-open: any missing file, missing field, or parse failure is
-# swallowed silently and the hook exits 0 with no output.
+# For each of the 5 vr-orchestra plugins, resolves the actively installed
+# version via ${HOME}/.claude/plugins/installed_plugins.json (the
+# authoritative map of which version is active per plugin -- NOT by
+# globbing the plugins/cache directory, since multiple version subfolders
+# can coexist on disk) -> installPath -> installPath/.claude-plugin/plugin.json
+# (falling back to installPath/plugin.json), and compares it against the
+# version pinned for that plugin in the vr-orchestra marketplace manifest.
+#
+# Also warns if the ${HOME}/agents/vr-orchestra checkout itself -- the
+# source of the marketplace pin file above -- is behind its cached
+# origin/main, since a stale checkout would make every comparison above
+# stale too.
+#
+# Fail-open: any missing file, missing field, or parse failure for a given
+# plugin (or for the staleness check) is swallowed silently and that check
+# is skipped; the hook never exits non-zero and never blocks a session.
 #
 # Registered as a SessionStart hook in hooks/hooks.json.
 
 set -uo pipefail
 
-main() {
-  local plugin_json="${CLAUDE_PLUGIN_ROOT:-}/.claude-plugin/plugin.json"
-  [ -f "$plugin_json" ] || plugin_json="${CLAUDE_PLUGIN_ROOT:-}/plugin.json"
-  [ -f "$plugin_json" ] || return 0
+PLUGINS=(vr-agent-creator secret-management agent-orchestrator agent-librarian agent-sysadmin)
+MARKETPLACE_NAME="vr-orchestra"
 
-  local marketplace_json="${HOME:-}/agents/vr-orchestra/.claude-plugin/marketplace.json"
-  [ -f "$marketplace_json" ] || return 0
+# Prints a comparison line (and mismatch warning) for one plugin. Any
+# failure to resolve a field for this plugin just returns 0 and moves on --
+# it must never take the other plugins or the rest of the hook down with it.
+check_plugin() {
+  local name="$1" installed_json="$2" marketplace_json="$3"
+
+  local block
+  block=$(grep -A 20 "\"${name}@${MARKETPLACE_NAME}\"" "$installed_json") || return 0
+  [ -n "$block" ] || return 0
+
+  local install_path
+  install_path=$(printf '%s\n' "$block" | grep -m1 '"installPath"' \
+    | sed -E 's/.*"installPath"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  [ -n "$install_path" ] || return 0
+
+  local plugin_json="${install_path}/.claude-plugin/plugin.json"
+  [ -f "$plugin_json" ] || plugin_json="${install_path}/plugin.json"
+  [ -f "$plugin_json" ] || return 0
 
   local installed
   installed=$(grep -m1 '"version"' "$plugin_json" | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$installed" ] || return 0
 
   local pinned
-  pinned=$(grep -A 10 '"name"[[:space:]]*:[[:space:]]*"agent-orchestrator"' "$marketplace_json" \
+  pinned=$(grep -A 10 "\"name\"[[:space:]]*:[[:space:]]*\"${name}\"" "$marketplace_json" \
     | grep -m1 '"version"' \
     | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$pinned" ] || return 0
 
-  echo "agent-orchestrator: installed v${installed} | marketplace pin v${pinned}"
+  echo "${name}: installed v${installed} | marketplace pin v${pinned}"
   if [ "$installed" != "$pinned" ]; then
-    echo "*** VERSION MISMATCH: restart sessions after running plugin update ***"
+    echo "*** VERSION MISMATCH (${name}): restart sessions after running plugin update ***"
   fi
+  return 0
+}
+
+# Warns if the vr-orchestra checkout (source of the marketplace pin file)
+# is behind its already-fetched origin/main. Deliberately does NOT run
+# `git fetch` -- this hook runs on every session start and must stay cheap
+# and offline-safe, so it only compares against whatever refs are already
+# cached locally.
+check_vr_orchestra_staleness() {
+  local dir="${HOME:-}/agents/vr-orchestra"
+  [ -d "${dir}/.git" ] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  command -v timeout >/dev/null 2>&1 || return 0
+
+  local behind
+  behind=$(timeout 5 git -C "$dir" rev-list HEAD..origin/main --count 2>/dev/null)
+  [ -n "$behind" ] || return 0
+  case "$behind" in (''|*[!0-9]*) return 0 ;; esac
+
+  if [ "$behind" -gt 0 ]; then
+    echo "*** VR-ORCHESTRA CHECKOUT STALE: ${dir} is ${behind} commit(s) behind cached origin/main -- version-check pins above may be stale, run git fetch/pull ***"
+  fi
+  return 0
+}
+
+main() {
+  local installed_json="${HOME:-}/.claude/plugins/installed_plugins.json"
+  local marketplace_json="${HOME:-}/agents/vr-orchestra/.claude-plugin/marketplace.json"
+
+  if [ -f "$installed_json" ] && [ -f "$marketplace_json" ]; then
+    local name
+    for name in "${PLUGINS[@]}"; do
+      check_plugin "$name" "$installed_json" "$marketplace_json"
+    done
+  fi
+
+  check_vr_orchestra_staleness
+
   return 0
 }
 
