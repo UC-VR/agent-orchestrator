@@ -22,8 +22,22 @@
 
 set -uo pipefail
 
-PLUGINS=(vr-agent-creator secret-management agent-orchestrator agent-librarian agent-sysadmin)
 MARKETPLACE_NAME="vr-orchestra"
+
+# Enumerates plugin names straight from the vr-orchestra marketplace manifest
+# (scoped to the "plugins" array so the manifest's own top-level "name" and
+# "owner.name" fields aren't picked up) instead of a hardcoded list, so newly
+# added/removed plugins are covered without editing this script. Fail-open:
+# any missing file or parse failure just yields no names, handled by the
+# caller.
+list_plugin_names() {
+  local marketplace_json="$1"
+  [ -f "$marketplace_json" ] || return 0
+  sed -n '/"plugins"[[:space:]]*:/,$p' "$marketplace_json" \
+    | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'
+  return 0
+}
 
 # Prints a comparison line (and mismatch warning) for one plugin. Any
 # failure to resolve a field for this plugin just returns 0 and moves on --
@@ -88,10 +102,17 @@ main() {
   local marketplace_json="${HOME:-}/agents/vr-orchestra/.claude-plugin/marketplace.json"
 
   if [ -f "$installed_json" ] && [ -f "$marketplace_json" ]; then
-    local name
-    for name in "${PLUGINS[@]}"; do
-      check_plugin "$name" "$installed_json" "$marketplace_json"
-    done
+    local plugins=()
+    while IFS= read -r name; do
+      [ -n "$name" ] && plugins+=("$name")
+    done < <(list_plugin_names "$marketplace_json")
+
+    if [ "${#plugins[@]}" -gt 0 ]; then
+      local name
+      for name in "${plugins[@]}"; do
+        check_plugin "$name" "$installed_json" "$marketplace_json"
+      done
+    fi
   fi
 
   check_vr_orchestra_staleness
