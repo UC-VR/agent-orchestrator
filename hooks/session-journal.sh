@@ -7,7 +7,8 @@
 #      session was substantive (>=12 tool_use blocks AND >=2 file-edit blocks).
 #   b) Detached background capture: fire-and-forget `claude -p` (acceptEdits,
 #      tools = Read/Edit/Write) that decides whether to append ONE learning
-#      block to the GLOBAL LEARNINGS.md. Detached via PowerShell Start-Process
+#      block to the GLOBAL LEARNINGS.md. Detached via `setsid` on Linux/macOS
+#      or PowerShell Start-Process on Git-Bash-on-Windows (MINGW/MSYS/CYGWIN),
 #      so it survives this hook's own exit / process-tree kill at timeout.
 #   d) Every step is wrapped so any failure falls through to exit 0.
 set -uo pipefail
@@ -76,10 +77,9 @@ find "$gjournal" -maxdepth 1 -type f -name '.capture-*' -mtime +1 -delete 2>/dev
 prompt_file="$gjournal/.capture-prompt-${session_id}.txt"
 launcher_file="$gjournal/.capture-run-${session_id}.sh"
 
-# Resolve absolute claude + bash paths (detached PATH is not guaranteed).
+# Resolve absolute claude path (detached PATH is not guaranteed).
 claude_bin=$(command -v claude 2>/dev/null || true)
 [ -z "$claude_bin" ] && claude_bin="$HOME/AppData/Roaming/npm/claude"
-bash_win=$(cygpath -w "$(command -v bash 2>/dev/null)" 2>/dev/null || echo 'C:\Program Files\Git\bin\bash.exe')
 
 # The capture prompt (written to a file to dodge command-line quoting).
 cat > "$prompt_file" <<PROMPT || exit 0
@@ -126,8 +126,30 @@ rm -f "${prompt_file}" 2>/dev/null || true
 rm -f "\$0" 2>/dev/null || true
 LAUNCHER
 
-# Fire-and-forget via PowerShell Start-Process (new independent process; proven
-# to survive parent exit AND a forced process-tree kill of this hook).
-powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '${bash_win}' -ArgumentList '${launcher_file}' -WindowStyle Hidden" >/dev/null 2>&1 || true
+# Fire-and-forget detach, platform-specific: the mechanism needed to survive
+# this hook's own exit / process-tree kill at the 10s SessionEnd timeout
+# differs by OS.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Git-Bash-on-Windows: PowerShell Start-Process is the proven mechanism
+    # here (new independent process; proven to survive parent exit AND a
+    # forced process-tree kill of this hook). Native POSIX backgrounding
+    # (setsid/nohup) is not reliable for surviving that under MSYS.
+    bash_win=$(cygpath -w "$(command -v bash 2>/dev/null)" 2>/dev/null || echo 'C:\Program Files\Git\bin\bash.exe')
+    powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '${bash_win}' -ArgumentList '${launcher_file}' -WindowStyle Hidden" >/dev/null 2>&1 || true
+    ;;
+  *)
+    # Linux/macOS: no PowerShell/cygpath available -- detach natively.
+    # setsid starts the launcher in a new session, fully detached from this
+    # hook's process group, so it survives the group being reaped at timeout.
+    # Falls back to nohup+disown if setsid is unavailable.
+    if command -v setsid >/dev/null 2>&1; then
+      setsid bash "$launcher_file" </dev/null >/dev/null 2>&1 &
+    else
+      nohup bash "$launcher_file" </dev/null >/dev/null 2>&1 &
+      disown 2>/dev/null || true
+    fi
+    ;;
+esac
 
 exit 0
