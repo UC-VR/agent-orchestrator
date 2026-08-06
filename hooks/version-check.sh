@@ -9,10 +9,10 @@
 # (falling back to installPath/plugin.json), and compares it against the
 # version pinned for that plugin in the vr-orchestra marketplace manifest.
 #
-# Also warns if the ${HOME}/agents/vr-orchestra checkout itself -- the
-# source of the marketplace pin file above -- is behind its cached
-# origin/main, since a stale checkout would make every comparison above
-# stale too.
+# Also warns if the vr-orchestra checkout itself -- the source of the
+# marketplace pin file above, located via known_marketplaces.json rather
+# than an assumed path -- is behind its cached origin/main, since a stale
+# checkout would make every comparison above stale too.
 #
 # Fail-open: any missing file, missing field, or parse failure for a given
 # plugin (or for the staleness check) is swallowed silently and that check
@@ -75,13 +75,44 @@ check_plugin() {
   return 0
 }
 
+# Resolves the vr-orchestra checkout path from Claude Code's own
+# known_marketplaces.json (installLocation for the "vr-orchestra" entry) --
+# the authoritative record of where this host actually installed it --
+# instead of assuming ${HOME}/agents/vr-orchestra. Falls back to that
+# assumed path if the marketplaces file is missing, unparseable, or points
+# at a directory that doesn't exist, so behavior on hosts using the
+# conventional layout is unchanged.
+resolve_vr_orchestra_dir() {
+  local known="${HOME:-}/.claude/plugins/known_marketplaces.json"
+  local fallback="${HOME:-}/agents/vr-orchestra"
+
+  if [ -f "$known" ]; then
+    local block
+    block=$(grep -A 6 "\"${MARKETPLACE_NAME}\"[[:space:]]*:" "$known" 2>/dev/null)
+    if [ -n "$block" ]; then
+      local loc
+      loc=$(printf '%s\n' "$block" | grep -m1 '"installLocation"' \
+        | sed -E 's/.*"installLocation"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' \
+        | sed 's/\\\\/\//g')
+      if [ -n "$loc" ] && [ -d "$loc" ]; then
+        printf '%s\n' "$loc"
+        return 0
+      fi
+    fi
+  fi
+
+  printf '%s\n' "$fallback"
+  return 0
+}
+
 # Warns if the vr-orchestra checkout (source of the marketplace pin file)
 # is behind its already-fetched origin/main. Deliberately does NOT run
 # `git fetch` -- this hook runs on every session start and must stay cheap
 # and offline-safe, so it only compares against whatever refs are already
 # cached locally.
 check_vr_orchestra_staleness() {
-  local dir="${HOME:-}/agents/vr-orchestra"
+  local dir="$1"
+  [ -n "$dir" ] || return 0
   [ -d "${dir}/.git" ] || return 0
   command -v git >/dev/null 2>&1 || return 0
   command -v timeout >/dev/null 2>&1 || return 0
@@ -99,7 +130,9 @@ check_vr_orchestra_staleness() {
 
 main() {
   local installed_json="${HOME:-}/.claude/plugins/installed_plugins.json"
-  local marketplace_json="${HOME:-}/agents/vr-orchestra/.claude-plugin/marketplace.json"
+  local vr_orchestra_dir
+  vr_orchestra_dir=$(resolve_vr_orchestra_dir)
+  local marketplace_json="${vr_orchestra_dir}/.claude-plugin/marketplace.json"
 
   if [ -f "$installed_json" ] && [ -f "$marketplace_json" ]; then
     local plugins=()
@@ -115,7 +148,7 @@ main() {
     fi
   fi
 
-  check_vr_orchestra_staleness
+  check_vr_orchestra_staleness "$vr_orchestra_dir"
 
   return 0
 }
