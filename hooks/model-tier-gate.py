@@ -14,6 +14,8 @@ def deny(reason):
 
 def main():
     data = json.loads(sys.stdin.read())          # malformed -> except -> allow
+    if data.get("tool_name") not in ("Agent", "Task"):
+        sys.exit(0)   # out of scope for this gate; allow
     ti = data.get("tool_input") or {}
     if not isinstance(ti, dict):
         sys.exit(0)

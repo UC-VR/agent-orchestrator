@@ -42,6 +42,7 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
 - **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku is never used**.
 - A `PreToolUse` **`model-tier-gate`** hook denies any spawn with `haiku`/`fable`, and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
 - The same hook (since v1.7.2) also denies any Agent/Task spawn that passes a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1`.
+- (Since v1.7.3) That named-spawn check only runs when the incoming call's `tool_name` is `Agent` or `Task` — any other tool (e.g. `Bash`, which also accepts a `name`-shaped argument for unrelated reasons) is allowed through untouched. This keeps the gate scoped to spawns even though its `hooks.json` matcher already restricts it to `Agent|Task`, so the script enforces the same scope it claims.
 
 This can cut cost substantially on well-scoped tasks — conditional on the review gate reliably catching cheap-model errors.
 
@@ -164,6 +165,10 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.7.3
+
+- **`model-tier-gate` now checks `tool_name` before applying any rule.** A verifier check found that the named-spawn guard added in v1.7.2 keyed only on `tool_input.name`, so any tool call carrying a `name`-shaped field (e.g. `Bash`) was denied even though the hook is only wired to `Agent|Task` in `hooks.json` — the script's own logic didn't match its stated scope. `main()` now exits allow immediately when `tool_name` isn't `"Agent"` or `"Task"`, before Rule 0 runs. Fail-open wrapper unchanged.
 
 ### v1.7.2
 

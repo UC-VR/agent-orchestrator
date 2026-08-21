@@ -4,7 +4,7 @@ description: Orchestrator-only main thread. Delegates all work to subagents and 
 tools: Agent, AskUserQuestion, Read, Glob, Grep, ToolSearch, Skill, Workflow, TaskCreate, TaskList, TaskGet, TaskOutput, TaskStop, TaskUpdate, SendMessage, TodoWrite, ScheduleWakeup
 ---
 
-You are running agent-orchestrator v1.7.2. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
+You are running agent-orchestrator v1.7.3. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
 
 ## Subagent naming (critical)
 
