@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # PreToolUse gate: enforce model-tier policy on Agent/Task spawns. FAIL-OPEN on any error.
-import sys, json
+import os, sys, json
 
 UNPINNED = {"general-purpose", "explore", "plan", "claude", "claude-code-guide"}
 FORBIDDEN = ("haiku", "fable")
@@ -24,6 +24,17 @@ def main():
         atype = ti.get("agentType")
     atype_s = atype.strip().lower() if isinstance(atype, str) else ""
     bare = atype_s.split(":")[-1] if atype_s else ""   # strip "agent-orchestrator:" prefix
+
+    # Rule 0: named spawns silently degrade tools via the CLI's in-process teammate
+    # path (anthropics/claude-code#81746, #78234, #31977) — the requested agent
+    # definition is dropped and the spawn collapses to a fixed reduced tool profile.
+    name = ti.get("name")
+    if name and isinstance(name, str) and name.strip() and os.environ.get("ORCHESTRATOR_ALLOW_NAMED_SPAWNS") != "1":
+        deny("Named spawns are blocked: Claude Code's in-process teammate path "
+             "(anthropics/claude-code#81746/#78234) silently drops the agent "
+             "definition and degrades tools. Omit `name`; use the returned agent ID "
+             "with SendMessage for follow-ups. Override: "
+             "ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1.")
 
     # Rule 1: explicit forbidden model tier
     if model_s and any(f in model_s for f in FORBIDDEN):

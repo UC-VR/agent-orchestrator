@@ -41,6 +41,7 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
 - Every Agent-tool spawn must carry an **explicit `model` param** — no inheritance.
 - **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku is never used**.
 - A `PreToolUse` **`model-tier-gate`** hook denies any spawn with `haiku`/`fable`, and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
+- The same hook (since v1.7.2) also denies any Agent/Task spawn that passes a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1`.
 
 This can cut cost substantially on well-scoped tasks — conditional on the review gate reliably catching cheap-model errors.
 
@@ -161,6 +162,15 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 4. **Synthesize** and return a clear answer.
 
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
+
+## Changelog
+
+### v1.7.2
+
+- **`model-tier-gate` now blocks named Agent/Task spawns.** Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile whenever `name` is set, regardless of `subagent_type`. The gate now denies any Agent/Task call carrying a non-empty `name`, evaluated before the existing model-tier checks, with an `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1` escape hatch for tmux-mode experiments.
+- **Removed `TeamCreate`/`TeamDelete` from the orchestrator's tool grant** — these tools were removed from the CLI in 2.1.178 and were dead weight in the frontmatter.
+- **`orchestrator.md`** now carries an explicit "never pass `name`" rule in the spawning guidance, and points at the returned agent ID (not a name) for `SendMessage` follow-ups.
+- **`hooks.json`** pins `"shell": "bash"` on the `model-tier-gate` PreToolUse hook, so its `command -v python3 ... || python ...` fallback can't be interpreted by PowerShell on Windows hosts without Git Bash.
 
 ## License
 
