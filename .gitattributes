@@ -2,3 +2,10 @@
 *.sh text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+
+# memory files: union merge — append-only convention, auto-merge cross-machine appends
+MEMORY.md merge=union
+BACKLOG.md merge=union
+JOURNAL.md merge=union
+**/MEMORY.md merge=union
+**/JOURNAL.md merge=union
