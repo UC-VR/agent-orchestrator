@@ -34,16 +34,20 @@ agent_type="$(printf '%s' "$input" \
 # Normalize to lowercase for the comparison.
 agent_type_lc="$(printf '%s' "$agent_type" | tr '[:upper:]' '[:lower:]')"
 
+# Spawns are namespaced (e.g. "agent-orchestrator:verifier"); strip any
+# "namespace:" prefix so the comparison below matches the bare role name.
+agent_type_bare="${agent_type_lc##*:}"
+
 # Loop-guard: spawning verifier/judge/scout -> no reminder (all three are
 # read-only checking/advisory roles; nagging them to "go verify" recreates
 # the verify-the-verifier loop).
-if [ "$agent_type_lc" = "verifier" ] || [ "$agent_type_lc" = "judge" ] || [ "$agent_type_lc" = "scout" ]; then
+if [ "$agent_type_bare" = "verifier" ] || [ "$agent_type_bare" = "judge" ] || [ "$agent_type_bare" = "scout" ]; then
   printf '%s\n' '{}'
   exit 0
 fi
 
-# Otherwise, inject the soft reminder.
-reminder='Reminder (soft, non-blocking): a worker subagent was just spawned. For high-stakes output (code changes, multi-file edits, refactors, config changes, or anything with correctness risk), run the verification gate before delivering to the user — spawn the dedicated `verifier` subagent (agentType `verifier`) to adversarially check the result, with bounded 1-2 retries, then escalate rather than spin. Skip this for trivial or read-only work.'
+# Otherwise, inject the soft reminder (two gates: mechanical -> verifier, decision-shaped -> judge then verifier).
+reminder='Reminder (soft, non-blocking): a producer subagent was just spawned. State the gate before delivering. Mechanical output (code, config, refactors): spawn the verifier subagent to adversarially check it, bounded 1-2 retries. Decision-shaped output (design, plan, approach, wording, prompt) or any report containing 2+ options with a recommendation: rank with the judge subagent first, then verify the winner. Skip both for trivial or read-only work.'
 
 # Emit valid JSON. Build it without jq; the reminder text contains no double quotes
 # or backslashes, so direct interpolation is safe here.

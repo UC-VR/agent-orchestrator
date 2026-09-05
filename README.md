@@ -6,7 +6,7 @@ A Claude Code plugin that packages an **orchestrator-only** agent: a main thread
 
 The orchestrator philosophy is **delegate everything**. The orchestrator's job is planning, routing, and judgement — not execution. All file edits, shell commands, builds, tests, and research are performed by subagents or teams it spawns. The orchestrator uses read-only tools (Read/Glob/Grep) solely to scope work and write good delegation prompts, then relays a clear synthesized answer to you.
 
-This plugin adds five patterns on top of plain delegation.
+This plugin adds six patterns on top of plain delegation.
 
 ### 1. Dispatch protocol (skill & agent matching)
 
@@ -21,7 +21,21 @@ This keeps routing **current** (reads the live list) and **auditable** (logs the
 
 The repo also ships a **`worker`** agent: the default leaf executor for minor, well-scoped tasks, running on a cheaper model tier with built-in craftsmanship principles (think-before-coding, simplicity, surgical changes, goal-driven verification).
 
-### 2. Verification gate (backed by the `verifier` subagent)
+#### Scout (bulk input pre-analysis)
+
+Bulk input (>~10 files or >~2K lines) feeding one downstream agent gets pre-analyzed by the **`scout`** agent first, so the planner reads a compact, priority-tagged briefing instead of the raw files. Scout runs the same model tier as `worker` — its value is an enforced read-only toolbelt (Read/Glob/Grep/Bash, Bash gated to inspection commands only by the `scout-readonly-gate.py` `PreToolUse` hook) and context isolation, not a cheaper model. Its briefing is capped (≤20% of source lines, ~8K chars). It never fixes, decides, or audits (a correctness check against a spec is `verifier` work) — it is not a verifier.
+
+### 2. Tournament Trigger + comparative gate (offer, don't impose)
+
+Some tasks are decisions, not executions — a design, a plan, a wording, an approach — where two competent producers would reasonably differ. The orchestrator flags these but never forces a tournament on its own: it asks via AskUserQuestion ("Tournament — N producers + judge, or a single producer?", defaulting to single) and only fans out unprompted when the user's own words already asked to compare or rank options.
+
+Once a tournament runs: name 2–3 materially different approaches, spawn one producer per approach in parallel (each emits one de-identified candidate, no self-ranking), spawn the **`judge`** subagent with explicit criteria to score, rank, declare a winner, and list grafts from the losers, then run the normal verifier gate on the grafted winner only — never on every candidate.
+
+The comparative gate itself has three tiers: **invariant** (never present a producer's own ranking as your conclusion — label it "producer-ranked, unjudged"), **offer** (default: when a report contains ≥2 ranked options, offer the judge pass via AskUserQuestion), and **mandatory** (only when the ranking will be acted on unreviewed in the same session, or the user explicitly asked for a ranking as the deliverable).
+
+The `judge` is shipped as its own agent (`agents/judge.md`, `model: opus`): read-only, evidence-grounded per-criterion scoring, honest tie-flagging, and a graft list — it ranks, it does not fix or merge.
+
+### 3. Verification gate (backed by the `verifier` subagent)
 
 Before delivering high-stakes output (code changes, multi-file edits, refactors, config changes), the orchestrator runs a verification gate:
 
@@ -29,11 +43,11 @@ Before delivering high-stakes output (code changes, multi-file edits, refactors,
 - Uses **bounded retries** — on `ISSUES FOUND`, the blocking findings go back to the producer or a fixer agent, capped at ~1–2 iterations to avoid infinite loops.
 - **Escalates** the unresolved issue to the user after the cap instead of looping or shipping broken work.
 
-Governing principle: **the bottleneck is verification, not generation.** Never deliver unverified high-stakes output.
+Governing principle: **for mechanical work the bottleneck is verification, not generation** — a plausible change is cheap, confirming it is the hard part. **For decision-shaped work the bottleneck is comparison** — a single draft has nothing to be better than. Comparison is offered by default and imposed only when the choice will be acted on unreviewed.
 
 The `verifier` is shipped as its own agent (`agents/verifier.md`): it checks, it does not fix (no Write/Edit tools by design), it never delegates, and it never rubber-stamps.
 
-### 3. Model-tiering guidance (enforced)
+### 4. Model-tiering guidance (enforced)
 
 The orchestrator matches model strength to task difficulty — and since v1.6.0 this is mechanically enforced, not just prose:
 
@@ -46,17 +60,17 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
 
 This can cut cost substantially on well-scoped tasks — conditional on the review gate reliably catching cheap-model errors.
 
-### 4. Reminder hook (soft nudge, not enforcement)
+### 5. Reminder hook (soft nudge, not enforcement)
 
-The plugin registers a `PostToolUse` hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`) on the subagent-spawning tool (`Agent`, with its legacy alias `Task`). After a worker is spawned, the hook injects a **non-blocking** `additionalContext` reminder to run the verification gate for high-stakes work. It is a **soft reminder only** — it never blocks or fails a tool call, and the orchestrator is free to skip it for trivial/read-only work. The hook emits a no-op (`{}`) when the spawned agent *is* the `verifier`, so it never nags you to verify the verifier (which would invite an infinite loop). The script depends only on POSIX `sh` + `grep`/`sed` (no `jq` requirement) and defensively reads several possible agent-type field names.
+The plugin registers a `PostToolUse` hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`) on the subagent-spawning tool (`Agent`, with its legacy alias `Task`). After a producer is spawned, the hook injects a **non-blocking** `additionalContext` reminder naming both gates: verifier for mechanical output, judge-then-verifier for decision-shaped output or a report with ≥2 ranked options. It is a **soft reminder only** — it never blocks or fails a tool call, and the orchestrator is free to skip it for trivial/read-only work. The hook emits a no-op (`{}`) when the spawned agent *is* the `verifier`, `judge`, or `scout` — matched on the bare role name after stripping any `agent-orchestrator:` namespace prefix, so it never nags you to verify the verifier (which would invite an infinite loop). The script depends only on POSIX `sh` + `grep`/`sed` (no `jq` requirement) and defensively reads several possible agent-type field names.
 
-### 5. Self-learning journal loop (SessionEnd + SessionStart + reconciler)
+### 6. Self-learning journal loop (SessionEnd + SessionStart + reconciler)
 
 The plugin ships a v2 self-learning loop that accumulates session knowledge, surfaces it for review at the next session start, and periodically triggers a deeper consolidation into skill/recipe improvements — all without touching the network, without extra dependencies, and without auto-applying anything.
 
 #### The two-hook cycle
 
-**SessionEnd (`hooks/session-journal.sh`):** at the end of every session, this hook reads `cwd`, `session_id`, `reason`, and `transcript_path` from the hook payload and appends a timestamped entry to `.claude/journal/<YYYY-MM-DD>-<session_id>.md` inside the project root. It also appends a line to `.claude/.skill-update-pending` — a simple counter file that records how many sessions have passed since the last review. Both writes are append-only and non-blocking (always exit 0).
+**SessionEnd (`hooks/session-journal.sh`):** at the end of every session, this hook reads `cwd`, `session_id`, `reason`, and `transcript_path` from the hook payload and appends a timestamped entry to `.claude/journal/<YYYY-MM-DD>-<session_id>.md` inside the project root, plus a `spawns: worker=N verifier=N judge=N scout=N` line grepped from the transcript when it's available. It also appends a line to `.claude/.skill-update-pending` — a simple counter file that records how many sessions have passed since the last review. Both writes are append-only and non-blocking (always exit 0).
 
 **SessionStart (`hooks/session-start-skill-review.sh`):** at the start of the next session, this hook reads the pending-marker and counts the `<!-- learning -->` sentinel lines in `.claude/journal/LEARNINGS.md`. It then chooses one of three branches:
 
@@ -159,12 +173,25 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 
 1. **Route** the task via the dispatch protocol (matching it to the best available skill or specialized agent),
 2. **Decompose** and spawn subagents or teams (in parallel where possible),
-3. **Verify** high-stakes output through the `verifier` gate with bounded retries,
-4. **Synthesize** and return a clear answer.
+3. **(Tournament)** for decision-shaped work, offer N competing producers + a `judge` pass rather than impose one,
+4. **Judge** the candidates when a tournament ran, or when the offer to rank ≥2 options is accepted,
+5. **Verify** high-stakes output (the winner, or the sole producer's output) through the `verifier` gate with bounded retries,
+6. **Synthesize** and return a clear answer.
 
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.8.0
+
+- **Tournament Trigger.** New pattern: decision-shaped work (design, plan, wording, approach) is flagged and *offered* as a tournament via `AskUserQuestion` — never imposed — defaulting to a single producer. Fan-out runs unprompted only when the user's own words asked to compare/rank/which-is-best.
+- **Comparative gate, three tiers.** Invariant (never present a producer's own ranking as your conclusion), offer (default: offer `judge` when a report carries ≥2 ranked options), mandatory (only when the ranking will be acted on unreviewed, or the user asked for a ranking as the deliverable).
+- **Candidates-only producer contract.** Tournament producers emit one de-identified candidate each — no self-ranking, no recommendation.
+- **Blind judging.** Candidates reach `judge` de-identified (Candidate A/B/C, no producer names or confidence framing).
+- **`Candidates: N` routing line.** The dispatch protocol's routing line is now two mandatory lines, the second stating candidate count and which gate follows.
+- **`verify-reminder.sh` namespace fix.** The loop-guard compared the bare agent name against a namespaced `subagent_type` (e.g. `agent-orchestrator:verifier`), so it never matched and the hook always fired on verifier/judge/scout spawns too. It now strips the `namespace:` prefix before comparing. The reminder text now names both gates (verifier for mechanical output, judge-then-verifier for decision-shaped output).
+- **`scout` gets Bash + a read-only gate.** Scout drops the "cheap model" framing — it runs the same tier as `worker`; its value is the enforced read-only toolbelt (new `Bash`, gated to inspection commands by a `PreToolUse` hook) and context isolation. Added an output ceiling (≤20% of source lines, ~8K char cap) and an explicit non-goal: scout is not a verifier or auditor.
+- **Marketplace version drift fixed.** `.claude-plugin/marketplace.json` was still pinned at 1.4.5 (stale since 1.5.0); both it and the `vr-orchestra` marketplace pin now track 1.8.0.
 
 ### v1.7.3
 

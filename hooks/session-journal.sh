@@ -2,7 +2,9 @@
 # SessionEnd hook (learning-loop v2). Non-blocking. ALWAYS exit 0 (fail-open).
 #
 # Behavior:
-#   c) Cheap per-cwd stub: one index line per session end, unconditionally.
+#   c) Cheap per-cwd stub: one index line per session end, unconditionally
+#      (plus a spawns:worker=N verifier=N judge=N scout=N line when the
+#      transcript is available, grepped fail-open).
 #   a) Anchor pre-gate: parse the transcript JSONL and only proceed if the
 #      session was substantive (>=12 tool_use blocks AND >=2 file-edit blocks).
 #   b) Detached background capture: fire-and-forget `claude -p` (acceptEdits,
@@ -34,6 +36,13 @@ journal_file="$journal_dir/${date_str}-${session_id}.md"
 {
   printf -- '- session_end %s | reason=%s | session=%s\n' "$ts" "${reason:-other}" "$session_id"
   [ -n "${transcript_path:-}" ] && printf -- '  transcript: %s\n' "$transcript_path"
+  if [ -n "${transcript_path:-}" ] && [ -f "$transcript_path" ]; then
+    w=$(grep -o '"subagent_type"[[:space:]]*:[[:space:]]*"agent-orchestrator:worker"' "$transcript_path" 2>/dev/null | wc -l | tr -d ' ')
+    v=$(grep -o '"subagent_type"[[:space:]]*:[[:space:]]*"agent-orchestrator:verifier"' "$transcript_path" 2>/dev/null | wc -l | tr -d ' ')
+    j=$(grep -o '"subagent_type"[[:space:]]*:[[:space:]]*"agent-orchestrator:judge"' "$transcript_path" 2>/dev/null | wc -l | tr -d ' ')
+    s=$(grep -o '"subagent_type"[[:space:]]*:[[:space:]]*"agent-orchestrator:scout"' "$transcript_path" 2>/dev/null | wc -l | tr -d ' ')
+    printf -- '  spawns: worker=%s verifier=%s judge=%s scout=%s\n' "${w:-0}" "${v:-0}" "${j:-0}" "${s:-0}"
+  fi
 } >> "$journal_file" 2>/dev/null || true
 
 # ---- a) anchor pre-gate --------------------------------------------------
