@@ -118,3 +118,27 @@ file handovers/HANDOVER-2026-09-07-orchestrator.md
 2. Run handover-open's anchor check from this repo root; if `../skills` commits are missing, Vadim has not pushed — ask before anything else.
 3. Skills to use next: `infra-network:cloudflare` (account ops, now with the reusable-policy rule), `cloudflare:cloudflare-one` (Access/Tunnel schema), `agent-orchestrator:verifier` (re-derive every write from live state), `google-workspace-recipes` (update the Sheet/Doc copies), `secret-management` (all creates via 1P, secret-bearing ones in a bypass session).
 4. Next actions in order: (a) confirm Crypton installed the prod Origin CA cert → `curl -sI https://api.new.infinox.com/api/users/me` should be 200; (b) revoke staging-only Origin CA 4104…4875 and confirm dupe 5013…0769 is gone; (c) when Crypton's first GH Actions deploy is green, remove Tailscale; (d) cutover planning from the risk register §0 decisions; (e) optional hygiene: W1.1, PAMM reusable migration, LB cleanup.
+
+## ADDENDUM 2: lp-ryckov11 chezmoi diagnostics + Shift+Enter, 2026-09-07 (later session)
+
+### Verified (read-only, nothing applied)
+- dotfiles `main` moved `34e9acf` → `d22defd` (docs-only: `.chezmoiignore`, `docs/PLAN-chezmoi-drift.md`, `docs/RESUME-chezmoi-2026-09-07.md`, `docs/parity-judge.md`); origin matches. `dot_claude/` untouched since `53bbbf5` (09-05).
+- `fix/ix-settings-adopt` is now COMMITTED and PUSHED as `5381223` ("wip(claude): adopt ix live plugin/marketplace state"); worktree `wt-ixadopt` (under an old lp session scratchpad) is clean. NOT yet checked whether `extraKnownMarketplaces.vr-orchestra.autoUpdate = true` is in that commit — verify before merging.
+- `MM .claude/settings.json` on lp = key-order churn only (Claude Code rewrote the file 09-06 13:48 in insertion order; `jq -S` normalised diff empty across managed and host-owned keys). Benign, self-documented in the modify_settings.json header.
+- `A Documents/WindowsPowerShell/*`, `A parity.ps1`, `A parity.tests.ps1`, `DA Documents/PowerShell/*` on lp = Wave 5 files already in main, never applied on lp. Expected pending, not new drift. PowerToys Run churn gone (unmanaged since `34e9acf`).
+- Windows Terminal, PowerToys modules, Greenshot: chezmoi-managed and clean on lp.
+
+### Blockers before any `chezmoi apply` on lp
+1. `run_once_before_10-link-documents.ps1.tmpl` (junction creator) is STILL in `main` despite the handover saying junctions were rolled back. Apply on lp would recreate `C:\Users\vr\Documents\{PowerShell,WindowsPowerShell}` junctions → OneDrive and re-trigger chezmoi's `unsupported file type 0o2000000` classifier failure (chezmoi#4228). Wave 5.1 must remove it before lp applies.
+2. `Documents/PowerShell/Microsoft.PowerShell_profile.ps1` has real content drift: live OneDrive copy (09-02) lacks the parity refactor from `76081af`/`a7dcc3f` (missing `. "$PSScriptRoot\parity.ps1"` dot-source, removed inline `ll`/`la`, updated `Show-Help`). Commit `13aabd2`'s "byte-identical" claim is stale. Applying overwrites the active pwsh7 profile — intended Wave 5 behaviour, but review the diff first.
+
+### Shift+Enter regression on lp — RESOLVED root cause, fix pending owner choice
+- Not chezmoi, not Claude Code. Herdr `0.8.2-preview` (installed 08-24, prev 0.7.4) flattens Shift+Enter to bare CR when the pane app negotiates modifyOtherKeys (Claude Code does, since Herdr sets `TERM=xterm-256color`); kitty path (`TERM=xterm-kitty`) works. herdrdev/herdr #3269 (open), #3700 (dup, same setup). WT binding `shift+enter → sendInput "\n"` (added 08-28, captured in chezmoi 09-02 `0c6ff70`) works with `claude` run directly in WT, fails through Herdr (A/B test confirmed by owner). Ctrl+J works under Herdr. Synthetic `sendInput` strings (incl. `\u001b\r`) are reconstructed as key events by Herdr, so rebinding is unreliable.
+- Options presented (owner has not chosen): A) remove WT binding in live file + `AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json.tmpl`, and launch claude under Herdr with `TERM=xterm-kitty` scoped to the launcher; B) use Ctrl+J; C) `\u001b\r` rebind (low confidence).
+
+### Resume on vr-oc1 (portable steps)
+1. `cd ~/.local/share/chezmoi && git fetch --all --prune && git status && git log --oneline -3 origin/main` → expect `d22defd`. Read `docs/RESUME-chezmoi-2026-09-07.md`.
+2. `git show --stat 5381223` and `git show 5381223 -- dot_claude/modify_settings.json` → confirm both ix-adopt edits (`enabledPlugins["vr-agent-creator@vr-orchestra"]=false`, `extraKnownMarketplaces.vr-orchestra.autoUpdate=true`); finish if missing.
+3. Wave 5.1 authoring on a new branch `fix/parity-onedrive` (design in In-Flight above); MUST delete `run_once_before_10-link-documents.ps1.tmpl`.
+4. Verifier + `chezmoi apply --dry-run -v` on vr-oc1; ff-merge both branches into main; push.
+5. Return to lp for: `chezmoi apply --dry-run -v` (review profile diff), apply, `parity.tests.ps1` under pwsh7 + 5.1, Shift+Enter fix, fleet convergence check.

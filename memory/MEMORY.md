@@ -16,3 +16,9 @@
 - Learning: a mandatory gate that names one agent (verifier) mechanically starves siblings; symmetric reminders + an explicit candidate-count field make omission visible.
 - Learning: cross-session peer report caught two improvements (output-shape trigger, blind judging) but got the hook mechanism wrong — always re-verify peer diagnoses against files.
 - Open validation: confirm real PreToolUse payloads carry agent_id/agent_type for scout Bash calls (gate no-ops silently if absent).
+
+## 2026-09-07
+- Handover claims about "rolled back" changes must be checked against `git ls-files` of the source repo — a junction-creator script the handover said was rolled back was still present in `main`.
+- "Byte-identical" capture claims go stale once later commits touch the same file — verify against current git history, not the commit that made the original claim.
+- Herdr #3269 (Shift+Enter flattened to bare CR under modifyOtherKeys negotiation) — Ctrl+J is the working substitute until a fix is chosen.
+- A producer's plausible mtime-based timeline was overturned by a verifier using git history + the upstream issue tracker — always check the source repo's history and vendor issue trackers before blaming the last-changed layer.
