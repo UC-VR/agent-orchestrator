@@ -22,3 +22,10 @@
 - "Byte-identical" capture claims go stale once later commits touch the same file — verify against current git history, not the commit that made the original claim.
 - Herdr #3269 (Shift+Enter flattened to bare CR under modifyOtherKeys negotiation) — Ctrl+J is the working substitute until a fix is chosen.
 - A producer's plausible mtime-based timeline was overturned by a verifier using git history + the upstream issue tracker — always check the source repo's history and vendor issue trackers before blaming the last-changed layer.
+
+## 2026-09-10 declutter planning session
+- Scout agents (agent-orchestrator:scout) cannot write files: the scout-readonly-gate blocks redirects, `docker`, `systemctl`, and complex jq (pipes, `as`, `$()`). Brief scouts to return inline tables, and use a `worker` for docker/systemctl checks. The jq restriction made the session-content scout cost ~98K tokens; a worker with a one-off script would be cheaper next time.
+- The projects scout only detects dirs with .git/README/compose markers — it missed 5 plain dirs (~1 GB) under ~/claw-services; verifier caught it. Always add a plain `ls` of container dirs to project scouts.
+- Corrections to auto-memory claims: ~/skills has 50 SKILL.md (not ~195); honcho@honcho plugin is DISABLED in settings.json (memory says "active"). ~/.claude/todos and plans do not exist; journal/ is a live learning-capture pipeline.
+- Declutter plan (verified, 377 lines): handovers/PLAN-declutter-vr-oc1-2026-09-10.md. Key decisions: minimal-move (live repos stay put, only new tree is ~/archive/2026-09/<domain>/), cleanupPeriodDays=60, crash-loops (paperclip, multica-backend) diagnose-only, agent-comms-1 dirty+unpushed is the first FINISH item. Execution not started.
+- Phase-1 cost: 3 scouts + 1 researcher + 1 services worker ≈ 260K tokens; planner (opus) 3 calls ≈ 160K; 2 verifier passes ≈ 80K.
