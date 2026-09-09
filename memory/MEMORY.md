@@ -30,3 +30,5 @@
 - Declutter plan (verified, 377 lines): handovers/PLAN-declutter-vr-oc1-2026-09-10.md. Key decisions: minimal-move (live repos stay put, only new tree is ~/archive/2026-09/<domain>/), cleanupPeriodDays=60, crash-loops (paperclip, multica-backend) diagnose-only, agent-comms-1 dirty+unpushed is the first FINISH item. Execution not started.
 - Phase-1 cost: 3 scouts + 1 researcher + 1 services worker ≈ 260K tokens; planner (opus) 3 calls ≈ 160K; 2 verifier passes ≈ 80K.
 - Execution done same day: ~30G reclaimed; 2 guards fired correctly (gemini-auth units, ~/tools on PATH) — guards earn their keep. Total session ≈ 1.1M tokens (plan ~650K, execute ~450K). Remote prompts written+verified for ix/lp.
+- Wave 2 lesson: disabling `cloudflared-paperclip1.service` took chatwoot+uptime1 offline ~2h — it was the only tunnel. Rule: before disabling any cloudflared/proxy unit, grep its config for ALL hostnames. Also: a scout brief's "memory says X is live" is stale the moment the owner retires X in the same session — re-brief workers with current decisions, not memory.
+- ~/inbox introduced (ACTION items); ~/archive is terminal.

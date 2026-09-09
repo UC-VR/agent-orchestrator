@@ -11,3 +11,4 @@
 - 2026-09-10: execute PLAN-declutter-vr-oc1-2026-09-10.md phases A–E (dry-run first); then run the same three scout briefs on lp-ryckov11 and ix-claude1
 - 2026-09-10: scout brief template — add `ls` of container dirs + hand docker/systemctl to a worker (scout gate blocks them)
 - 2026-09-10: fix auto-memory drift in ~/.claude/projects/-home-vr/memory: skills count 195→50, Honcho plugin disabled
+- 2026-09-10: after chezmoi Wave 5.1 lands — remove honcho lines from dot_claude/modify_settings.json, drop ~/tools/bin PATH line if owner archives ~/tools, remove ccl* launchers, add lp-ryckov11 ssh alias

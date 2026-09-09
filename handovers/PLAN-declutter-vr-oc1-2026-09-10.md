@@ -23,21 +23,36 @@ Phase D (~/.claude: cleanupPeriodDays=90, 87 heartbeat files, 12 orphan/memory-o
 empty leaves). Disk: 172G→142G used (~30G reclaimed). Log: ~/archive/2026-09/declutter-log-2026-09-10.txt.
 Settings backup: ~/archive/2026-09/settings.json.bak-2026-09-10.
 
+### Wave 2 — 2026-09-10 (later same day), VERIFIED
+
+**Owner decisions:** gemini delete + stale units removed; ~/tools = ACESx memory tooling,
+still undecided; Honcho unwired completely; cloudflared checked; docker prune done; convex
+vars were URLs/paths not secrets — nothing to rotate; ~/backups archived; honcho plugin
+uninstalled; sessions staged for omnigent; ~/inbox introduced as the ACTION location — rule:
+empty by 2026-12 pass; archive = never look again.
+
+**Executed:** cloudflared-paperclip1 unit restored — it was the single tunnel (0efd55e7) for
+chatwoot+uptime1+multica1; disabling it caused a ~2h public outage of chatwoot/uptime1, fixed;
+multica1 ingress stripped, config backed up. gemini-auth-manager + 4 units removed. Stale
+slack-backup unit swept. Honcho: 23 MCP procs killed, compose down (5 volumes kept), timer
+off, plugin/marketplace/MCP/permissions removed, ~/CLAUDE.md memory line updated, dir →
+archive/2026-09/infra/honcho, skill removed from ~/skills (source repo + marketplace cache +
+plugin cache; commit 51b2192). Docker prune +35G. ~/backups → archive/2026-09/backups. Disk
+172G→101G used total today.
+
 **PENDING — owner decisions/actions:**
-1. gemini-auth-manager: user units gemini-auth-refresh.service + gemini-auth-monitor.service still reference it → disable+delete both and the dir, or keep as live?
-2. ~/tools: ~/tools/bin is on $PATH → keep live (remove from HARVEST list), or drop from PATH in chezmoi and archive later?
-3. claw-services/honcho: 6 local commits, origin = plastic-labs/honcho (403) → create UC-VR fork/mirror and repoint, or accept local-only?
-4. ~/.cloudflared: config.yml/.bak, tunnel cred json, paperclip1-tunnel.env still present; paperclip1/multica1 hostnames now dead → delete tunnel + DNS in Cloudflare, remove files; expect uptime-kuma/HetrixTools alerts for those hosts.
-5. Credentials found in the deleted convex backup (names in log: CONVEX_DEPLOYMENT, NEXT_PUBLIC_CONVEX_*, NOTES_VAULT, OPENCLAW_*) → rotate if still valid; secret-leak remediation (OP token) remains UNRESOLVED.
-6. ~/backups 15G and claw-services/honcho/backups → eyeball; not touched.
-7. Obsidian: claw (git ahead 366/behind 372, dirty), claw-lp-cb1 2.3G, vrLYT 882M, Basic_template_2026-Q3 → live or archive?
-8. ~/backup (1.7M, 2026-09-04, unnamed) → what is it?
-9. skills/qb-cli/SKILL.md untracked + ccy/ccy+ launchers → keep or drop; ccl* broken launchers → fix in chezmoi source after Wave 5.1 lands.
-10. honcho@honcho plugin installed-but-disabled → enable or uninstall.
-11. Sessions: RESUME omnigent 9a08e66e (WSL2 runner) and bugalteris eef759e4 (Cablenet PDFs); fb-x relay / bazaraki agents — still broken?; multica thread is moot (retired).
-12. lp-ryckov11 has no ssh alias (used vr@100.102.239.39) → add to chezmoi ssh template after Wave 5.1; ix-claude1: `claude` not on non-login PATH.
-13. uptime-kuma repo detached HEAD (1 dirty) → pin a branch; monitors for paperclip/multica → remove.
-14. Remote runs tomorrow: handovers/PROMPT-declutter-ix-claude1-2026-09-11.md and PROMPT-declutter-lp-ryckov11-2026-09-11.md (both verified).
+1. ~/tools: ACESx memory scripts (mem-recall/mem-write/obs-search/migrate-memory-v2) on PATH via ~/.bashrc:46 — archive + drop PATH line (chezmoi, after Wave 5.1)?
+2. Honcho leftovers: 5 docker volumes honcho_{pgdata,redis-data,prometheus-data,grafana-honcho-data,venv} → `docker volume rm` when sure; chezmoi template dot_claude/modify_settings.json lines 117/159/180/213/221 still reference honcho → remove after Wave 5.1 or chezmoi apply re-adds the plugin; archive/2026-09/infra/honcho 6.6G incl. backups/ → delete later.
+3. Cloudflare dashboard: delete DNS CNAMEs + Zero Trust Access apps for multica1.ucvc.email and paperclip1.ucvc.email; keep tunnel 0efd55e7 (chatwoot+uptime1). Cosmetic: rename unit cloudflared-paperclip1.service → cloudflared.service.
+4. OP service-account token leak — still UNRESOLVED; only VR can rotate (1Password admin → new token → ~/.env).
+5. Obsidian: claw (git 366↑/372↓ dirty), claw-lp-cb1 2.3G, vrLYT 882M, Basic_template_2026-Q3 — later.
+6. ~/backup 1.7M unnamed — later.
+7. skills/qb-cli + ccy* launchers; ccl* broken launchers → chezmoi after Wave 5.1 — later.
+8. Sessions: 6 transcripts in ~/inbox/sessions-for-omnigent/ — omnigent needs an importer (none exists); resume omnigent WSL2 + bugalteris Cablenet threads.
+9. lp-ryckov11 ssh alias → chezmoi ssh template after Wave 5.1. ix-claude1: claude not on non-login PATH.
+10. uptime-kuma repo detached HEAD; remove its monitors for paperclip/multica/honcho.
+11. Remote runs: handovers/PROMPT-declutter-{ix-claude1,lp-ryckov11}-2026-09-11.md.
+12. Chezmoi Wave 5.1 + ix-adopt still in flight (unchanged today).
 
 ---
 ## 1. Target structure
