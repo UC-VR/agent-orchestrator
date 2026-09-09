@@ -29,3 +29,4 @@
 - Corrections to auto-memory claims: ~/skills has 50 SKILL.md (not ~195); honcho@honcho plugin is DISABLED in settings.json (memory says "active"). ~/.claude/todos and plans do not exist; journal/ is a live learning-capture pipeline.
 - Declutter plan (verified, 377 lines): handovers/PLAN-declutter-vr-oc1-2026-09-10.md. Key decisions: minimal-move (live repos stay put, only new tree is ~/archive/2026-09/<domain>/), cleanupPeriodDays=60, crash-loops (paperclip, multica-backend) diagnose-only, agent-comms-1 dirty+unpushed is the first FINISH item. Execution not started.
 - Phase-1 cost: 3 scouts + 1 researcher + 1 services worker ≈ 260K tokens; planner (opus) 3 calls ≈ 160K; 2 verifier passes ≈ 80K.
+- Execution done same day: ~30G reclaimed; 2 guards fired correctly (gemini-auth units, ~/tools on PATH) — guards earn their keep. Total session ≈ 1.1M tokens (plan ~650K, execute ~450K). Remote prompts written+verified for ix/lp.

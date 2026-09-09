@@ -5,6 +5,41 @@ explicit hand-to-VR block (§4F). Nothing under `~/.local/share/chezmoi` is touc
 
 ---
 
+## 0. STATUS 2026-09-10 — EXECUTED
+
+**Owner decisions taken (verbatim intent):** approved rubbish list; OpenClaw dashboards ×5 → deleted;
+paperclip (repo, deployed copy, containers, ~/.paperclip*, cloudflared unit) → retired+deleted;
+multica (service, containers, symlink, agent-multica repo — pushed to GitHub first) → retired+deleted;
+gemini-auth-manager → delete (blocked by guard, see pending); tenacitos → deleted; lobsterboard +
+lobster-healthcheck timer → deleted; claw-backups → pruned to newest 1 (`pre-auth-swap-20260315-0244`);
+the rest → harvest wave; cleanupPeriodDays → 90; finish-first commits done.
+
+**Executed:** Phase B (9 repos committed/pushed; librarian + skills fast-forwarded and pushed),
+harvest (3 HARVEST.md + paperclip patch + preserved customs under archive/2026-09/paperclip/untracked/
++ 3 habits promoted to -home-vr memory + 2 memory corrections), Phase A deletes (20 targets), service
+teardown (compose down -v for paperclip & multica; 5 user units disabled and moved to
+archive/2026-09/openclaw/systemd-units/), Phase C moves (gstack, claw-logs, emergency-bot, tasks, zoe),
+Phase D (~/.claude: cleanupPeriodDays=90, 87 heartbeat files, 12 orphan/memory-only project dirs, 431
+empty leaves). Disk: 172G→142G used (~30G reclaimed). Log: ~/archive/2026-09/declutter-log-2026-09-10.txt.
+Settings backup: ~/archive/2026-09/settings.json.bak-2026-09-10.
+
+**PENDING — owner decisions/actions:**
+1. gemini-auth-manager: user units gemini-auth-refresh.service + gemini-auth-monitor.service still reference it → disable+delete both and the dir, or keep as live?
+2. ~/tools: ~/tools/bin is on $PATH → keep live (remove from HARVEST list), or drop from PATH in chezmoi and archive later?
+3. claw-services/honcho: 6 local commits, origin = plastic-labs/honcho (403) → create UC-VR fork/mirror and repoint, or accept local-only?
+4. ~/.cloudflared: config.yml/.bak, tunnel cred json, paperclip1-tunnel.env still present; paperclip1/multica1 hostnames now dead → delete tunnel + DNS in Cloudflare, remove files; expect uptime-kuma/HetrixTools alerts for those hosts.
+5. Credentials found in the deleted convex backup (names in log: CONVEX_DEPLOYMENT, NEXT_PUBLIC_CONVEX_*, NOTES_VAULT, OPENCLAW_*) → rotate if still valid; secret-leak remediation (OP token) remains UNRESOLVED.
+6. ~/backups 15G and claw-services/honcho/backups → eyeball; not touched.
+7. Obsidian: claw (git ahead 366/behind 372, dirty), claw-lp-cb1 2.3G, vrLYT 882M, Basic_template_2026-Q3 → live or archive?
+8. ~/backup (1.7M, 2026-09-04, unnamed) → what is it?
+9. skills/qb-cli/SKILL.md untracked + ccy/ccy+ launchers → keep or drop; ccl* broken launchers → fix in chezmoi source after Wave 5.1 lands.
+10. honcho@honcho plugin installed-but-disabled → enable or uninstall.
+11. Sessions: RESUME omnigent 9a08e66e (WSL2 runner) and bugalteris eef759e4 (Cablenet PDFs); fb-x relay / bazaraki agents — still broken?; multica thread is moot (retired).
+12. lp-ryckov11 has no ssh alias (used vr@100.102.239.39) → add to chezmoi ssh template after Wave 5.1; ix-claude1: `claude` not on non-login PATH.
+13. uptime-kuma repo detached HEAD (1 dirty) → pin a branch; monitors for paperclip/multica → remove.
+14. Remote runs tomorrow: handovers/PROMPT-declutter-ix-claude1-2026-09-11.md and PROMPT-declutter-lp-ryckov11-2026-09-11.md (both verified).
+
+---
 ## 1. Target structure
 
 **Decision: minimal-move.** I am NOT creating `~/work/<domain>/`. Reason: moving a LIVE repo
@@ -88,6 +123,8 @@ Tags: KEEP-LIVE / FINISH / HARVEST→ARCHIVE / RUBBISH-DELETE / FIX / OWNER-DECI
 | ~/claw-services/gemini-auth-manager | HARVEST→ARCHIVE | 186d, 1 dirty; commit then archive/2026-09/infra/ |
 | ~/teamviewer | RUBBISH-DELETE | AUR package clone, re-clonable, 221d |
 
+Status 2026-09-10: see §0.
+
 ### 2.4 OpenClaw legacy (decommissioned 2026-06-22)
 | item | tag | note |
 |---|---|---|
@@ -106,6 +143,8 @@ Tags: KEEP-LIVE / FINISH / HARVEST→ARCHIVE / RUBBISH-DELETE / FIX / OWNER-DECI
 | ~/claw-services/zoe 40K | HARVEST→ARCHIVE | Mar scaffold, never built (PROJECT-PLAN.md + README + prisma + empty worktrees) — harvest PROJECT-PLAN.md, archive/openclaw/ |
 | ~/claw-services/browseros 225M | RUBBISH-DELETE | single `BrowserOS.AppImage` (Feb), re-downloadable, no config beside it |
 
+Status 2026-09-10: see §0.
+
 ### 2.5 Paperclip / ACES / Trading Desk
 | item | tag | note |
 |---|---|---|
@@ -116,6 +155,8 @@ Tags: KEEP-LIVE / FINISH / HARVEST→ARCHIVE / RUBBISH-DELETE / FIX / OWNER-DECI
 | ~/gstack | HARVEST→ARCHIVE | 157d, clean → archive/paperclip/ |
 | ~/Obsidian/ACES, fund-manager, claude-td | KEEP-LIVE | vaults |
 | ~/Obsidian/Basic_template_2026-Q3 123M | OWNER-DECIDES | template vault — still seeding new vaults? |
+
+Status 2026-09-10: see §0.
 
 ### 2.6 Infinox corporate
 | item | tag | note |
@@ -133,6 +174,8 @@ Tags: KEEP-LIVE / FINISH / HARVEST→ARCHIVE / RUBBISH-DELETE / FIX / OWNER-DECI
 | timer `lobster-healthcheck` | FIX | points at archived lobsterboard → disable timer BEFORE archiving that dir |
 | ~/omnigent | KEEP-LIVE | 1d, 3 dirty → FINISH commit; `omnigent-reaper.timer` + `omni-host` unit live |
 
+Status 2026-09-10: see §0.
+
 ### 2.8 Backups / trash / misc
 | item | size | tag |
 |---|---|---|
@@ -147,6 +190,8 @@ Tags: KEEP-LIVE / FINISH / HARVEST→ARCHIVE / RUBBISH-DELETE / FIX / OWNER-DECI
 | ~/backup (2026-09-04) | 1.7M | OWNER-DECIDES — what is it? unnamed, 6 days old |
 | ~/Obsidian/claw-lp-cb1 | 2.3G | OWNER-DECIDES — unexplained, largest vault |
 | ~/Obsidian/vrLYT | 882M | OWNER-DECIDES — active or archive? |
+
+Status 2026-09-10: see §0.
 
 ### 2.9 ~/.claude (521M)
 | item | tag | note |
