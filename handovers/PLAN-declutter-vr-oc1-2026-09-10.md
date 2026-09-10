@@ -58,6 +58,7 @@ systemd-units dirs — awaiting owner).
 1. ROLL the Cloudflare ucvc.email DNS Edit Token (1P item pedmgxjhred34upvdu7fx2seci) in CF dashboard → API Tokens → Roll; update 1P. It has leaked into transcripts twice (2 older REDACTED markers found).
 2. OP service-account token leak — still UNRESOLVED (VR only).
 3. Archive moves awaiting go: gstack/zoe/emergency-bot → ~/inbox/harvested_repos/; delete archive/2026-09/openclaw/tasks + both systemd-units dirs.
+→ DONE 2026-09-10 (moved gstack/zoe/emergency-bot to inbox/harvested_repos; deleted tasks + both systemd-units dirs).
 4. Rename ~/claw-services → ~/services (dir already exists; tg-bridge lives there): move compose dirs + update unit WorkingDirectory/compose labels + tunnel config + SERVICES.md together; do it in a maintenance window, curl hostnames before/after.
 5. Cosmetic: rename cloudflared-paperclip1.service → cloudflared.service (same window as #4).
 6. Identify: 0.0.0.0 listeners 5900 / 10300 (needs `sudo ss -ltnp`), tailscale serve :3000 and :8407 targets; uptime-kuma: 4 disabled monitors (claimok.co.uk, bushbucket.ltd, claude-auth-manager, Slack Backup) → delete; grafana datasources are UI-only (honcho one may be dangling) → open UI once; aimm noVNC hotfix lives only in the container layer (bake or accept loss); tg-bridge description still says "Paperclip" → confirm downstream (tgtopics-relay :8787?) and rename.
