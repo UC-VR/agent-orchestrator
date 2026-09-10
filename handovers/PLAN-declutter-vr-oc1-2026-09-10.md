@@ -1,5 +1,7 @@
 # PLAN — Declutter vr-oc1 (Arch, user `vr`) — 2026-09-10
 
+> **Reading guide (2026-09-10 late):** §0 is the CURRENT state + pending list and is authoritative. §1–§5 and §7 are the pre-execution plan, kept as history — where they contradict §0, §0 wins (e.g. honcho, gemini-auth, ~/backups, multica are all gone/archived now). §6 rules are current as amended below.
+
 Planning only. Execution is a later session, dry-run-first. No sudo in this plan except the
 explicit hand-to-VR block (§4F). Nothing under `~/.local/share/chezmoi` is touched (Wave 5.1 in flight).
 
@@ -396,6 +398,10 @@ Otherwise this phase is empty. Do not invent sudo work.
 6. Big backup trees get a scheduled eyeball, never a bulk delete.
 7. **Quarterly repeat (next: 2026-12).** Same three read-only scout briefs — (a) `~/.claude` state + memory census, (b) repo census with days-since-commit / dirty / unpushed, (c) running services (docker + systemd) — then this same plan shape. Run on `lp-ryckov11` (Windows: swap `systemctl --user` for scheduled tasks/services, `du` for `Get-ChildItem`) and `ix-claude1` (Linux: identical).
 8. Every quarter, re-check the memory index for stale claims (this pass found 2 of 26 wrong) — treat MEMORY.md as code that rots.
+9. **`~/inbox/` is for ACTION; `~/archive/` is terminal.** Anything still needing a decision or a follow-up (session exports, pending lists, things to import) lives in `~/inbox/` (Windows: `C:\Users\vr\inbox\`, never under OneDrive). Rule: inbox is empty by the next quarterly pass. Never park action items in archive.
+10. **Before disabling/stopping ANY unit, service, container, tunnel or scheduled task, read its config for every hostname/port/path it serves.** Unit names lie: on 2026-09-10 `cloudflared-paperclip1.service` was the only tunnel for chatwoot + uptime-kuma; disabling it caused a ~2h public outage. Curl every served hostname before and after.
+11. **Same-session decisions beat memory.** A worker briefed with 'memory says X is live' will protect X even after the owner retired X minutes earlier — re-brief with current decisions, and append dated corrections to MEMORY.md the same day.
+12. Retirement checklist for a service (from Honcho/paperclip/multica): push any local commits → compose down (keep volumes, list them) → disable+archive its units/timers → uninstall plugin/MCP/permissions entries → strip its tunnel ingress + DNS + Access app → mv dir to archive → correct memory → note chezmoi-template lines to remove after the frozen wave lands.
 
 ---
 
@@ -416,6 +422,7 @@ prune each subdir together with its session, never independently.
 | agent-sysadmin | ccb90efa | 89 | "elegant answer already ranked #1" — mid-analysis | **RESUME-AFTER-backlog-triage** — §3 Worker A rewrites that repo's BACKLOG; resume after, or it re-litigates |
 | agent-bugalteris | eef759e4 | 58 | filing Cablenet PDFs, then a dry-run | **RESUME** — concrete unfinished ops task with a defined next step |
 | agent-multica | fbe01be7 | 65 | waiting on user `/start` | **OWNER-DECIDES** — blocked 48d on you, not on the agent (§5) |
+Status 2026-09-10: multica retired → fbe01be7 is moot (CLOSE). Six resumable transcripts exported to ~/inbox/sessions-for-omnigent/.
 | fb-x | 6e6715ba | 80 | relay down after reboot | **CLOSE-WITH-HANDOVER** — an ops incident, not a thread; check if relay is up, then close |
 | bazaraki | 14888df1 | 51 | re-verifying after a restart wiped agents | **CLOSE-WITH-HANDOVER** — same: incident, verify current state fresh rather than replay 51 turns |
 | root | c2b2c2bd | 11 | cc* launcher adoption | **CLOSE** — already ended in a full HANDOVER (09-04); point §2.1 launcher FIX at that doc |
