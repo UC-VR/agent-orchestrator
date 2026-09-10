@@ -142,3 +142,6 @@ file handovers/HANDOVER-2026-09-07-orchestrator.md
 3. Wave 5.1 authoring on a new branch `fix/parity-onedrive` (design in In-Flight above); MUST delete `run_once_before_10-link-documents.ps1.tmpl`.
 4. Verifier + `chezmoi apply --dry-run -v` on vr-oc1; ff-merge both branches into main; push.
 5. Return to lp for: `chezmoi apply --dry-run -v` (review profile diff), apply, `parity.tests.ps1` under pwsh7 + 5.1, Shift+Enter fix, fleet convergence check.
+
+## Correction 2026-09-10
+- dotfiles `main` observed at `faa3005` (not `34e9acf`) before commit `5cc210d` (honcho removal); `git worktree list` shows no `wt-ixadopt`; `fix/ix-settings-adopt` state not re-checked — re-derive before resuming Wave 5.1/ix-adopt.

@@ -42,19 +42,31 @@ archive/2026-09/infra/honcho, skill removed from ~/skills (source repo + marketp
 plugin cache; commit 51b2192). Docker prune +35G. ~/backups → archive/2026-09/backups. Disk
 172G→101G used total today.
 
+### Wave 3 — 2026-09-10 (evening), VERIFIED
+
+**Executed:** SERVICES.md registry written at ~/claw-services/SERVICES.md (verified; includes
+DO-NOT-DISABLE rule for cloudflared-paperclip1); chezmoi template honcho lines removed
+(dotfiles 5cc210d, applied); Cloudflare multica1 CNAME deleted via scoped DNS-edit token,
+paperclip1 had none, no Access apps; ~/tools → ~/inbox/harvested_repos/tools; archive
+reviewed (3 ANALYZE candidates: gstack, zoe, emergency-bot; 2 DELETE: openclaw/tasks,
+systemd-units dirs — awaiting owner).
+
+**SECRET INCIDENT:** CF DNS-edit token printed into a subagent transcript, scrubbed same day
+(1 file), token must be rolled.
+
 **PENDING — owner decisions/actions:**
-1. ~/tools: ACESx memory scripts (mem-recall/mem-write/obs-search/migrate-memory-v2) on PATH via ~/.bashrc:46 — archive + drop PATH line (chezmoi, after Wave 5.1)?
-2. Honcho leftovers: 5 docker volumes honcho_{pgdata,redis-data,prometheus-data,grafana-honcho-data,venv} → `docker volume rm` when sure; chezmoi template dot_claude/modify_settings.json lines 117/159/180/213/221 still reference honcho → remove after Wave 5.1 or chezmoi apply re-adds the plugin; archive/2026-09/infra/honcho 6.6G incl. backups/ → delete later.
-3. Cloudflare dashboard: delete DNS CNAMEs + Zero Trust Access apps for multica1.ucvc.email and paperclip1.ucvc.email; keep tunnel 0efd55e7 (chatwoot+uptime1). Cosmetic: rename unit cloudflared-paperclip1.service → cloudflared.service.
-4. OP service-account token leak — still UNRESOLVED; only VR can rotate (1Password admin → new token → ~/.env).
-5. Obsidian: claw (git 366↑/372↓ dirty), claw-lp-cb1 2.3G, vrLYT 882M, Basic_template_2026-Q3 — later.
-6. ~/backup 1.7M unnamed — later.
-7. skills/qb-cli + ccy* launchers; ccl* broken launchers → chezmoi after Wave 5.1 — later.
-8. Sessions: 6 transcripts in ~/inbox/sessions-for-omnigent/ — omnigent needs an importer (none exists); resume omnigent WSL2 + bugalteris Cablenet threads.
-9. lp-ryckov11 ssh alias → chezmoi ssh template after Wave 5.1. ix-claude1: claude not on non-login PATH.
-10. uptime-kuma repo detached HEAD; remove its monitors for paperclip/multica/honcho.
-11. Remote runs: handovers/PROMPT-declutter-{ix-claude1,lp-ryckov11}-2026-09-11.md.
-12. Chezmoi Wave 5.1 + ix-adopt still in flight (unchanged today).
+1. ROLL the Cloudflare ucvc.email DNS Edit Token (1P item pedmgxjhred34upvdu7fx2seci) in CF dashboard → API Tokens → Roll; update 1P. It has leaked into transcripts twice (2 older REDACTED markers found).
+2. OP service-account token leak — still UNRESOLVED (VR only).
+3. Archive moves awaiting go: gstack/zoe/emergency-bot → ~/inbox/harvested_repos/; delete archive/2026-09/openclaw/tasks + both systemd-units dirs.
+4. Rename ~/claw-services → ~/services (dir already exists; tg-bridge lives there): move compose dirs + update unit WorkingDirectory/compose labels + tunnel config + SERVICES.md together; do it in a maintenance window, curl hostnames before/after.
+5. Cosmetic: rename cloudflared-paperclip1.service → cloudflared.service (same window as #4).
+6. Identify: 0.0.0.0 listeners 5900 / 10300 (needs `sudo ss -ltnp`), tailscale serve :3000 and :8407 targets; uptime-kuma: 4 disabled monitors (claimok.co.uk, bushbucket.ltd, claude-auth-manager, Slack Backup) → delete; grafana datasources are UI-only (honcho one may be dangling) → open UI once; aimm noVNC hotfix lives only in the container layer (bake or accept loss); tg-bridge description still says "Paperclip" → confirm downstream (tgtopics-relay :8787?) and rename.
+7. Honcho leftovers: 5 docker volumes; archive/2026-09/infra/honcho 6.6G (dumps) → delete later.
+8. Handover drift: HANDOVER-2026-09-07 says dotfiles main=34e9acf with dangling wt-ixadopt worktree; reality 2026-09-10: main was faa3005 before 5cc210d, no worktree exists → append correction to that handover.
+9. ~/tools PATH line in dot_bashrc.tmpl (~/.bashrc:46, -d guarded, inert) → remove after Wave 5.1; ccl* launchers; lp ssh alias; qb-cli + ccy*.
+10. Obsidian vaults / ~/backup / archive backups (lp-cb1 ×2, 14.7G) retention — later.
+11. Sessions in ~/inbox/sessions-for-omnigent — omnigent importer to build.
+12. Remote runs: PROMPT-declutter-{ix-claude1,lp-ryckov11}-2026-09-11.md (verified, committed).
 
 ---
 ## 1. Target structure

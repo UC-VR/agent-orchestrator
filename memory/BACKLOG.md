@@ -1,0 +1,1 @@
+- 2026-09-10: claw-services → ~/services rename + cloudflared unit rename (maintenance window); identify listeners 5900/10300 + TS serve :3000/:8407; uptime-kuma prune 4 disabled monitors; grafana datasource check.
