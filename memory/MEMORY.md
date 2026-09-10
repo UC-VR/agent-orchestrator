@@ -36,3 +36,6 @@
 
 2026-09-10:
 - Listener lesson: a host-network docker container's ports don't show in `docker ps` — audit with `ss -ltnp` + /proc/<pid>/cgroup, not docker port lists. Port-number guesses (Wyoming, RustDesk) were both wrong; only the owner's sudo ss settled it.
+
+## 2026-09-10
+- Firewall lesson: a rich rule's direction (source vs destination) is the whole rule — read `--list-all` literally, don't trust the report's paraphrase.
