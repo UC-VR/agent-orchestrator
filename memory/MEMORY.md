@@ -33,3 +33,6 @@
 - Wave 2 lesson: disabling `cloudflared-paperclip1.service` took chatwoot+uptime1 offline ~2h — it was the only tunnel. Rule: before disabling any cloudflared/proxy unit, grep its config for ALL hostnames. Also: a scout brief's "memory says X is live" is stale the moment the owner retires X in the same session — re-brief workers with current decisions, not memory.
 - ~/inbox introduced (ACTION items); ~/archive is terminal.
 - 2026-09-10: Wave 3 lesson: a worker auditing services flagged the live cloudflared unit as 'stale' from its NAME — same trap twice in one day. Any brief touching units must carry the current ingress facts. Secret lesson: `op item get --format json` leaks values into transcripts; workers must use `op read op://…` into an env var in one command, never `op item get` on secret items; invoke secret-hygiene skill in any brief that touches 1Password.
+
+2026-09-10:
+- Listener lesson: a host-network docker container's ports don't show in `docker ps` — audit with `ss -ltnp` + /proc/<pid>/cgroup, not docker port lists. Port-number guesses (Wyoming, RustDesk) were both wrong; only the owner's sudo ss settled it.
