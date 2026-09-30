@@ -182,6 +182,10 @@ For trivial or conversational follow-ups it answers directly; everything else ge
 
 ## Changelog
 
+### v1.8.1
+
+- **`hooks.json`: removed the `"//"` comment key.** Claude Code does not recognize `"//"` and warned on every load (`agent-orchestrator: hooks.json: unknown key "//" ignored`). It is replaced by the documented optional top-level `description` field (a one-line summary of all registered hooks). The detailed rationale that lived in the comment was already in `hooks/verify-reminder.sh`'s header; the one missing fact (tool renamed Task → Agent in CC 2.1.63, hence the `Agent|Task` matcher) was added there. Hook behaviour is unchanged.
+
 ### v1.8.0
 
 - **Tournament Trigger.** New pattern: decision-shaped work (design, plan, wording, approach) is flagged and *offered* as a tournament via `AskUserQuestion` — never imposed — defaulting to a single producer. Fan-out runs unprompted only when the user's own words asked to compare/rank/which-is-best.

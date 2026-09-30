@@ -2,6 +2,8 @@
 # verify-reminder.sh — SOFT reminder, NOT enforcement.
 #
 # Registered as a PostToolUse hook on the subagent-spawning tool (Agent, alias Task).
+# The tool was renamed from Task to Agent in Claude Code 2.1.63, so the hooks.json
+# matcher is `Agent|Task` to cover both the current name and the legacy alias.
 # After the orchestrator spawns a worker, this prints an `additionalContext` reminder
 # nudging it to run the verification gate (spawn the `verifier` subagent) for
 # high-stakes work. It does NOT block, fail, or force anything — Claude is free to

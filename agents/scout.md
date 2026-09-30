@@ -11,7 +11,7 @@ tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 
-You are running agent-orchestrator v1.8.0. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
+You are running agent-orchestrator v1.8.1. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
 
 ## Read-only contract
 
