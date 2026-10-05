@@ -182,6 +182,10 @@ For trivial or conversational follow-ups it answers directly; everything else ge
 
 ## Changelog
 
+### v1.8.4
+
+- **1.8.4: scout gate — shlex-unquote argv; closes quoted/escaped flag bypass class.** The gate tokenized with `seg.split()` and never unquoted, so `sed s/a/Z/ '-i' f`, `sort '-o' out g`, `git log '--output=lo'`, `find . -exe\c rm` etc. slipped past every flag check. Segments are now split quote-aware and parsed with `shlex.split` (unparseable quoting is denied), and all per-command checks run on the unquoted argv. Unquoted `$`/backtick expansion and brace expansion are rejected (they can synthesize flags the gate cannot see), and `env -S`, `awk -f/-i/-l/@load/pipes` and `yq -s` are denied. Raw-string checks (redirects, `<(`/`>(`, `$(`, backticks, `eval`) still run first on the unquoted-nothing original.
+
 ### v1.8.3
 
 - **1.8.3: scout gate — close sed/sort/git-remote option-order bypasses.** `sed` options are now validated anywhere in argv (GNU permutation made `sed s/a/b/ -i f`, `... f -i.bak`, `--in-place`, `-ibak`, `-ni` write in place); `sort` denies any short-option cluster containing `o` (`-of`, `-oout`, `-k2 -of`) and abbreviated `--output`/`--compress-program`; `git remote` takes its verb from the first non-flag argument (`git remote -v add x y` was a bypass). Also closed: `yq --inplace`, `tree -o`, `rg --pre`. Known residual (documented in the script header of the jq/yq rule): `less +!cmd`, `awk -f file`, `git diff --ext-diff`. README: namespaced `agent-orchestrator:verifier` in the verification-gate bullet.

@@ -95,6 +95,20 @@ ALLOW_COMMANDS = [
     "tree -L 2",
     "rg -n foo",
     "yq '.a' f.yaml",
+    # legit quoted/escaped READ args must survive shlex unquoting (1.8.4)
+    "grep -r \"foo bar\" .",
+    "find . -name '*.md'",
+    "git log --grep='fix: x'",
+    "rg 'a|b' .",
+    "awk '{print $1}' f",
+    "awk -F'|' '{print $1}' f",
+    "ls 2>&1",
+    "ls 2>/dev/null",
+    "cat < f",
+    "git remote show -n origin",
+    "sort --files0-from=x",
+    "grep -n \"foo$\" f",
+    "find . -name '*.py' | wc -l",
 ]
 
 DENY_COMMANDS = [
@@ -153,6 +167,32 @@ DENY_COMMANDS = [
     "tree -L 2 -o out",
     "rg --pre sh foo",
     "rg --pre=sh foo",
+    # 1.8.4: quoted / escaped flag-token bypass class (shlex unquoting)
+    "sed s/a/Z/ '-i' f",
+    "sed s/a/Z/ \"-i\" f",
+    "sed s/a/Z/ \\-i f",
+    "sed s/a/Z/ '--in-place' f",
+    "sort '-o' out g",
+    "sort \"--output=o2\" g",
+    "sort '-of' g",
+    "sort \\-o f g",
+    "sort --out\\put=f g",
+    "git log '--output=lo' -1",
+    "git diff \"--output=x\"",
+    "yq '-i' . f",
+    "tree '-o' out",
+    "rg '--pre=sh' foo",
+    "find . -exe\\c rm {} \\;",
+    "find . -d\\elete",
+    "find . -\"exec\" rm {} \\;",
+    "find . -e\"\"xec rm {} \\;",
+    "sed s/a/b/ \"unterminated f",
+    "sort $'-o' out g",
+    "sort $FLAG out g",
+    "sort {-o,x} g",
+    "awk 'BEGIN{print 1 | \"sh\"}'",
+    "awk -f prog.awk f",
+    "env -S 'rm x'",
 ]
 
 

@@ -21,6 +21,7 @@
 #     any "plugin:" prefix) isn't exactly "scout", this hook is a strict
 #     no-op — it never gates the orchestrator or any other subagent.
 import re
+import shlex
 import sys
 import json
 
@@ -66,8 +67,11 @@ CHEZMOI_DENY = {
     "re-add", "merge",
 }
 
-_FIND_DENY_RE = re.compile(r'-delete\b|-execdir\b|-exec\b|-okdir\b|-ok\b|-f(?:print0?|printf|ls)\b')
-_AWK_SYSTEM_RE = re.compile(r'\bsystem\s*\(')
+# All per-command checks below run on the shlex-UNQUOTED argv, never the raw
+# string: `'-i'`, `"--output=x"`, `\-o`, `-exe\c` all arrive here as the real flag.
+_FIND_DENY = {"-delete", "-exec", "-execdir", "-ok", "-okdir",
+              "-fprint", "-fprint0", "-fprintf", "-fls"}
+_AWK_SYSTEM_RE = re.compile(r'\bsystem\s*\(|@(?:load|include)\b')
 _GIT_OUTPUT_RE = re.compile(r'^--output(=|$)')
 _SORT_SHORT_O_RE = re.compile(r'^-[^-]*o')
 # sed is only allowed with a simple address+print/delete/quit or s///[gpiIm0-9]
@@ -75,13 +79,14 @@ _SORT_SHORT_O_RE = re.compile(r'^-[^-]*o')
 _SED_ADDR = r'(?:\d+|\$|/(?:[^/\\]|\\.)*/)'
 _SED_SCRIPT_RE = re.compile(
     r'^(?:' + _SED_ADDR + r'?(?:,' + _SED_ADDR + r')?!?[pdq=l]'
-    r'|s/(?:[^/\\]|\\.)*/(?:[^/\\]|\\.)*/[gpiIm0-9]*)$')
+    r'|s/(?:[^/\\]|\\.)*/(?:[^/\\]|\\.)*/[gpiIm0-9]*)\Z')
 _SED_FLAGS_RE = re.compile(r'^-[nErs]+$|^--(quiet|silent|regexp-extended)$')
-_JQ_YQ_DENY_RE = re.compile(r'(^|\s)-[A-Za-z]*i[A-Za-z]*(\s|$)|--in-?place\b')
+_JQ_YQ_SHORT_I_RE = re.compile(r'^-[A-Za-z]*i')
+_ENV_SPLIT_RE = re.compile(r'^-[^-]*S|^--s')   # env -S / --split-string[=...] execs its value
 # Known residual (not closed here; need config/interactive features): `less +!cmd`,
-# `awk -f prog-file`, `git diff --ext-diff/--textconv` (need repo/user config).
+# `git diff --ext-diff/--textconv` (need repo/user config), and unquoted glob
+# flags like `sed s/a/b/ -[i] f` (only bite if a file literally named `-i` exists).
 _EVAL_WORD_RE = re.compile(r'(^|[\s;&|])eval(\s|$)')
-_SEGMENT_SPLIT_RE = re.compile(r'\|\||&&|;|\r\n|\n|\||&')
 _PROC_SUBST_RE = re.compile(r'[<>]\(')
 
 
@@ -114,11 +119,12 @@ def is_scout_caller(data):
 
 def normalize_cmd_token(tok):
     """First-token normalization: strip a leading directory path (either slash
-    style) and a trailing .exe, lowercase. Intentionally naive (whitespace-
-    based tokenizing upstream, no full shell-quote parsing) -- unusual/unquoted
-    paths with spaces resolve to a non-allowlisted first token, which the
-    fail-closed allowlist denies anyway, so imprecision here only ever makes
-    the gate stricter, never looser."""
+    style) and a trailing .exe, lowercase. Input is already shlex-unquoted
+    (posix), so Windows-style backslash paths get their backslashes eaten and
+    resolve to a non-allowlisted token -- that fails closed. NOTE: this
+    leniency applies to the COMMAND NAME only; flag tokens must always be
+    validated on the unquoted argv (see check_segment), because a quoted or
+    escaped flag does not start with '-' in the raw string."""
     t = tok.strip().strip('"\'')
     base = re.split(r'[\\/]', t)[-1]
     if base.lower().endswith(".exe"):
@@ -185,9 +191,10 @@ def check_git_remote(args):
     return None
 
 def check_sed(tokens):
-    """GNU getopt permutes options, so `sed s/a/b/ -i f` is in-place. Every
-    dash-prefixed token ANYWHERE in argv must be a known-safe flag; the first
-    non-dash token is the script, the rest are input files."""
+    """GNU getopt permutes options, so `sed s/a/b/ -i f` is in-place. After
+    shlex unquoting, every dash-prefixed token ANYWHERE in argv must be a
+    known-safe flag; the first non-dash token is the script, the rest are
+    input files."""
     script = None
     for t in tokens[1:]:
         if t.startswith("-"):
@@ -196,8 +203,6 @@ def check_sed(tokens):
             continue
         if script is None:
             script = t
-            if len(t) >= 2 and t[0] == t[-1] and t[0] in "'\"":
-                script = t[1:-1]
             if not _SED_SCRIPT_RE.match(script):
                 return "scout is read-only; sed script not a simple print/s/// expression"
     if script is None:
@@ -244,6 +249,8 @@ def check_env(tokens):
     used to launch another program must itself resolve to an allow-listed
     verb, closing the `env <mutating cmd>` bypass."""
     for t in tokens[1:]:
+        if _ENV_SPLIT_RE.match(t):
+            return "scout is read-only; env -S/--split-string executes its argument"
         if t.startswith("-"):
             continue
         if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', t):
@@ -255,11 +262,46 @@ def check_env(tokens):
     return None
 
 
+def check_awk(tokens):
+    args = tokens[1:]
+    if _AWK_SYSTEM_RE.search(" ".join(args)):
+        return "scout is read-only; awk system()/@load/@include is not permitted"
+    for t in args:
+        if t.startswith("--"):
+            name = t[2:].split("=", 1)[0]
+            if name and any(l.startswith(name) for l in ("include", "load", "file", "exec")):
+                return "scout is read-only; awk %s is not permitted" % t
+        elif t.startswith("-"):
+            if t[1:2] in ("i", "l", "f", "E"):
+                return "scout is read-only; awk %s (include/load/-f/exec) is not permitted" % t
+        elif "|" in t and ("getline" in t or "print" in t):
+            # quote-aware splitting keeps `print | "cmd"` / `"cmd" | getline`
+            # inside one token; they spawn processes. (`-F '|'` stays allowed.)
+            return "scout is read-only; awk pipes (print | cmd, cmd | getline) are not permitted"
+    return None
+
+def check_jq_yq(first, tokens):
+    for t in tokens[1:]:
+        if t.startswith("--"):
+            name = t[2:].split("=", 1)[0]
+            if len(name) >= 2 and ("in-place".startswith(name) or "inplace".startswith(name)):
+                return "scout is read-only; jq/yq -i/--in-place is not permitted"
+            if first == "yq" and name and "split-exp".startswith(name):
+                return "scout is read-only; yq --split-exp writes files"
+        elif _JQ_YQ_SHORT_I_RE.match(t):
+            return "scout is read-only; jq/yq -i/--in-place is not permitted"
+        elif first == "yq" and re.match(r'^-[A-Za-z]*s', t):
+            return "scout is read-only; yq -s/--split-exp writes files"
+    return None
+
 def check_segment(segment):
     seg = segment.strip()
     if not seg:
         return None
-    tokens = seg.split()
+    try:
+        tokens = shlex.split(seg, posix=True)
+    except ValueError:
+        return "scout is read-only; unparseable quoting in command"
     if not tokens:
         return None
     first_raw = tokens[0]
@@ -270,7 +312,7 @@ def check_segment(segment):
         return check_git(tokens)
     if first == "chezmoi":
         return check_chezmoi(tokens)
-    if first == "find" and _FIND_DENY_RE.search(seg):
+    if first == "find" and any(t in _FIND_DENY for t in tokens[1:]):
         return "scout is read-only; find -delete/-exec/-execdir/-ok/-fprint*/-fls is not permitted"
     if first == "sed":
         return check_sed(tokens)
@@ -278,18 +320,74 @@ def check_segment(segment):
         return check_sort(tokens)
     if first == "tree":
         return check_tree(tokens)
-    if first in ("rg",):
+    if first == "rg":
         return check_rg(tokens)
-    if first == "awk" and _AWK_SYSTEM_RE.search(seg):
-        return "scout is read-only; awk system() is not permitted"
-    if first in ("jq", "yq") and _JQ_YQ_DENY_RE.search(seg):
-        return "scout is read-only; jq/yq -i/--in-place is not permitted"
+    if first == "awk":
+        return check_awk(tokens)
+    if first in ("jq", "yq"):
+        return check_jq_yq(first, tokens)
     if first == "env":
         return check_env(tokens)
     return None
 
+class _Reject(Exception):
+    pass
+
+def split_segments(command):
+    """Quote-aware split on unquoted ; & | newline (so `rg 'a|b'` and
+    `find ... \\;` stay in one segment). Also rejects constructs the shell
+    expands into flag tokens that no argv check could see: `$` outside single
+    quotes ($'-i', $VAR, "${x}") and unquoted `{` (brace expansion {-o,x}).
+    Backslash-newline is a bash line continuation and is deleted, matching
+    bash (shlex would keep it inside the token)."""
+    segs, cur = [], []
+    sq = dq = False
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        if sq:
+            cur.append(c)
+            if c == "'":
+                sq = False
+        elif c == "\\":
+            if i + 1 >= n:
+                raise _Reject("scout is read-only; trailing backslash")
+            if command[i + 1] == "\n":
+                i += 2
+                continue
+            cur.append(c)
+            cur.append(command[i + 1])
+            i += 2
+            continue
+        elif c == "`" or (c == "$" and not (dq and not re.match(r'[A-Za-z_{(0-9@*#?!$-]', command[i + 1:i + 2]))):
+            # inside "..." a lone `$` (e.g. "foo$") is literal; anything that
+            # starts an expansion, or any `$` outside quotes, is rejected.
+            raise _Reject("scout is read-only; shell expansion ($ / backtick) is not permitted outside single quotes")
+        elif dq:
+            cur.append(c)
+            if c == '"':
+                dq = False
+        elif c == "'":
+            sq = True
+            cur.append(c)
+        elif c == '"':
+            dq = True
+            cur.append(c)
+        elif c in ";&|\n":
+            segs.append("".join(cur))
+            cur = []
+        elif c == "{":
+            raise _Reject("scout is read-only; brace expansion is not permitted")
+        else:
+            cur.append(c)
+        i += 1
+    if sq or dq:
+        raise _Reject("scout is read-only; unparseable quoting in command (unbalanced quote)")
+    segs.append("".join(cur))
+    return segs
 
 def evaluate(command):
+    # Raw-string checks first: these must see the command before any unquoting.
     if _PROC_SUBST_RE.search(command):
         return "scout is read-only; process substitution (<()/>()) is not permitted"
     if has_bad_redirection(command):
@@ -299,13 +397,16 @@ def evaluate(command):
     if _EVAL_WORD_RE.search(command):
         return "scout is read-only; eval is not permitted"
     # strip harmless stderr redirections so their `&` is not read as a separator
-    scrubbed = command.replace("2>&1", "").replace("2>/dev/null", "")
-    for seg in _SEGMENT_SPLIT_RE.split(scrubbed):
+    scrubbed = command.replace("2>&1", " ").replace("2>/dev/null", " ")
+    try:
+        segments = split_segments(scrubbed)
+    except _Reject as e:
+        return str(e)
+    for seg in segments:
         reason = check_segment(seg)
         if reason:
             return reason
     return None
-
 
 def main():
     data = json.loads(sys.stdin.read())
