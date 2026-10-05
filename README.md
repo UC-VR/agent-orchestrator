@@ -182,6 +182,14 @@ For trivial or conversational follow-ups it answers directly; everything else ge
 
 ## Changelog
 
+### v1.8.2
+
+- **`model-tier-gate` leaks closed.** A spawn with no `subagent_type` (Claude Code defaults it to `general-purpose`), `model: "inherit"`, or `subagent_type: "fork"` could land a subagent on the orchestrator's fable tier. Missing/empty type is now treated as `general-purpose`, `inherit` as no model, and `fork` is denied outright (forks ignore `model`); escape hatch `ORCHESTRATOR_ALLOW_FORK=1`.
+- **`scout-readonly-gate` hardened.** Now denies `find -fprint*/-fls/-okdir`, `git --output`, `sort -o`, process substitution, single `&` chaining, `awk system (`, `chezmoi execute-template`, mutating `git branch`/`git remote` forms; `sed` is allowed only for simple print/`s///` scripts (fixes the `sed -n 1,5p` false positive). Header comment corrected: plugin agents ignore frontmatter hooks, so plugin-level `hooks.json` is the only mechanism.
+- **`verifier` now pins opus** (was sonnet), matching the adversarial-verification tier in the orchestrator prose.
+- **Prose/frontmatter:** namespaced agent names in the scout example and orchestrator verifier reference; orchestrator `tools` list trimmed to the 5-series set (dropped TaskCreate/TaskList/TaskGet/TaskUpdate/TodoWrite/TaskOutput, added ListAgents).
+- **Tests:** `hooks/tests/test_model_tier_gate.py` added; scout gate tests extended. Run with `cd hooks && python3 -m unittest discover -s tests -v`.
+
 ### v1.8.1
 
 - **`hooks.json`: removed the `"//"` comment key.** Claude Code does not recognize `"//"` and warned on every load (`agent-orchestrator: hooks.json: unknown key "//" ignored`). It is replaced by the documented optional top-level `description` field (a one-line summary of all registered hooks). The detailed rationale that lived in the comment was already in `hooks/verify-reminder.sh`'s header; the one missing fact (tool renamed Task → Agent in CC 2.1.63, hence the `Agent|Task` matcher) was added there. Hook behaviour is unchanged.

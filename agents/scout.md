@@ -11,7 +11,7 @@ tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 
-You are running agent-orchestrator v1.8.1. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
+You are running agent-orchestrator v1.8.2. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
 
 ## Read-only contract
 
@@ -81,7 +81,7 @@ Return the briefing as your final message, or write it to the path the caller sp
 ```
 Agent({
   description: "Scout legacy-config dump before migration plan",
-  subagent_type: "scout",
+  subagent_type: "agent-orchestrator:scout",
   model: "sonnet",
   prompt: "Scout C:/projects/legacy-app/config/ (41 files, ~12K lines — configs, a few JSON dumps, some READMEs) ahead of a migration plan a separate planner agent will write. Context: the migration target is the new YAML-based config format introduced in v3. Flag any file still describing the old INI format as outdated. Return the briefing as your final message."
 })

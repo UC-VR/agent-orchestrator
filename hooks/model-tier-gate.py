@@ -21,11 +21,15 @@ def main():
         sys.exit(0)
     model = ti.get("model")
     model_s = model.strip().lower() if isinstance(model, str) else ""
+    if model_s == "inherit":
+        model_s = ""   # "inherit" == no model: resolves to the caller's (fable) tier
     atype = ti.get("subagent_type")
     if not isinstance(atype, str) or not atype:
         atype = ti.get("agentType")
     atype_s = atype.strip().lower() if isinstance(atype, str) else ""
     bare = atype_s.split(":")[-1] if atype_s else ""   # strip "agent-orchestrator:" prefix
+    if not bare:
+        bare = "general-purpose"   # Claude Code defaults a missing subagent_type to general-purpose
 
     # Rule 0: named spawns silently degrade tools via the CLI's in-process teammate
     # path (anthropics/claude-code#81746, #78234, #31977) — the requested agent
@@ -37,6 +41,11 @@ def main():
              "definition and degrades tools. Omit `name`; use the returned agent ID "
              "with SendMessage for follow-ups. Override: "
              "ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1.")
+
+    # Rule 0b: forks inherit the main model and ignore any `model` override.
+    if bare == "fork" and os.environ.get("ORCHESTRATOR_ALLOW_FORK") != "1":
+        deny("Model-tier policy: fork inherits the orchestrator's model tier; spawn a "
+             "typed agent instead. Override: ORCHESTRATOR_ALLOW_FORK=1.")
 
     # Rule 1: explicit forbidden model tier
     if model_s and any(f in model_s for f in FORBIDDEN):

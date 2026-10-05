@@ -75,6 +75,16 @@ ALLOW_COMMANDS = [
     "jq '.a[]' big.json | sort | uniq -c",
     "cat f 2>/dev/null",
     "find . -name '*.md' | wc -l",
+    "sed -n 1,5p f",
+    "sed -n '1,5p' f | head",
+    "sed -n '/foo/p' f",
+    "sed 's/a/b/g' f",
+    "git branch",
+    "git branch -a --list",
+    "git remote -v",
+    "git diff --stat",
+    "sort -u f",
+    "ls 2>&1 | head",
 ]
 
 DENY_COMMANDS = [
@@ -91,6 +101,24 @@ DENY_COMMANDS = [
     "op read op://v/i/f",
     "git log && rm -rf x",
     r"C:\Program Files\Git\bin\rm.exe x",
+    # write bypasses closed in 1.8.2
+    "find . -fprint out",
+    "find . -fprintf out %p",
+    "git diff --output=/tmp/x",
+    "sort -o f g",
+    "sort --output=f g",
+    "diff <(ls) <(rm -rf x)",
+    "ls & rm x",
+    "awk 'BEGIN{system (\"rm x\")}'",
+    "chezmoi execute-template '{{ output \"rm\" \"x\" }}'",
+    "git branch -D main",
+    "git branch newbranch",
+    "git remote add x y",
+    "sed -n -i 1p f",
+    "sed -e 1p f",
+    "sed 'w out' f",
+    "sed 's/a/b/w out' f",
+    "sed '1e rm x' f",
 ]
 
 
