@@ -50,7 +50,7 @@ GIT_BRANCH_VALUE_FLAGS = {
     "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
     "--format", "--sort", "--abbrev",
 }
-GIT_REMOTE_ALLOW = {"-v", "--verbose", "show", "get-url", "-n"}
+GIT_REMOTE_ALLOW = {"-v", "--verbose", "-n"}
 GIT_DENY = {
     "commit", "add", "push", "pull", "fetch", "checkout", "switch", "reset",
     "rebase", "merge", "stash", "clean", "rm", "mv", "tag", "apply",
@@ -69,7 +69,7 @@ CHEZMOI_DENY = {
 _FIND_DENY_RE = re.compile(r'-delete\b|-execdir\b|-exec\b|-okdir\b|-ok\b|-f(?:print0?|printf|ls)\b')
 _AWK_SYSTEM_RE = re.compile(r'\bsystem\s*\(')
 _GIT_OUTPUT_RE = re.compile(r'^--output(=|$)')
-_SORT_DENY_RE = re.compile(r'^(-[A-Za-z]*o|--output(=.*)?|--compress-program(=.*)?)$')
+_SORT_SHORT_O_RE = re.compile(r'^-[^-]*o')
 # sed is only allowed with a simple address+print/delete/quit or s///[gpiIm0-9]
 # script: no -i/-e/-f, and no w/W/e/r commands or s///w|e flags can be expressed.
 _SED_ADDR = r'(?:\d+|\$|/(?:[^/\\]|\\.)*/)'
@@ -77,7 +77,9 @@ _SED_SCRIPT_RE = re.compile(
     r'^(?:' + _SED_ADDR + r'?(?:,' + _SED_ADDR + r')?!?[pdq=l]'
     r'|s/(?:[^/\\]|\\.)*/(?:[^/\\]|\\.)*/[gpiIm0-9]*)$')
 _SED_FLAGS_RE = re.compile(r'^-[nErs]+$|^--(quiet|silent|regexp-extended)$')
-_JQ_YQ_DENY_RE = re.compile(r'(^|\s)-i(\s|$)|--in-place\b')
+_JQ_YQ_DENY_RE = re.compile(r'(^|\s)-[A-Za-z]*i[A-Za-z]*(\s|$)|--in-?place\b')
+# Known residual (not closed here; need config/interactive features): `less +!cmd`,
+# `awk -f prog-file`, `git diff --ext-diff/--textconv` (need repo/user config).
 _EVAL_WORD_RE = re.compile(r'(^|[\s;&|])eval(\s|$)')
 _SEGMENT_SPLIT_RE = re.compile(r'\|\||&&|;|\r\n|\n|\||&')
 _PROC_SUBST_RE = re.compile(r'[<>]\(')
@@ -171,17 +173,24 @@ def check_git_branch(args):
     return None
 
 def check_git_remote(args):
+    """Only `git remote [-v]`, `git remote show ...`, `git remote get-url ...`.
+    Flags may appear anywhere, so the FIRST non-flag arg is the verb; a flag
+    before it must not smuggle a mutating verb past an args[0]-only check."""
+    verb = next((a for a in args if not a.startswith("-")), None)
+    if verb is not None and verb not in ("show", "get-url"):
+        return "scout is read-only; git remote %s is not permitted" % verb
     for a in args:
-        if a not in GIT_REMOTE_ALLOW and a.startswith("-"):
+        if a.startswith("-") and a not in GIT_REMOTE_ALLOW:
             return "scout is read-only; git remote %s is not permitted" % a
-    if args and not args[0].startswith("-") and args[0] not in GIT_REMOTE_ALLOW:
-        return "scout is read-only; git remote %s is not permitted" % args[0]
     return None
 
 def check_sed(tokens):
+    """GNU getopt permutes options, so `sed s/a/b/ -i f` is in-place. Every
+    dash-prefixed token ANYWHERE in argv must be a known-safe flag; the first
+    non-dash token is the script, the rest are input files."""
     script = None
     for t in tokens[1:]:
-        if script is None and t.startswith("-"):
+        if t.startswith("-"):
             if not _SED_FLAGS_RE.match(t):
                 return "scout is read-only; sed %s is not permitted (only -n/-E/-r/-s)" % t
             continue
@@ -196,11 +205,29 @@ def check_sed(tokens):
     return None
 
 def check_sort(tokens):
+    """Deny any short cluster containing `o` (-o, -of, -k2 -of, -ro) and any
+    GNU-abbreviated --output / --compress-program."""
     for t in tokens[1:]:
-        if _SORT_DENY_RE.match(t):
-            return "scout is read-only; sort -o/--output/--compress-program is not permitted"
+        if _SORT_SHORT_O_RE.match(t):
+            return "scout is read-only; sort -o is not permitted"
+        if t.startswith("--"):
+            name = t[2:].split("=", 1)[0]
+            if name and ("output".startswith(name) or
+                         (len(name) >= 2 and "compress-program".startswith(name))):
+                return "scout is read-only; sort --output/--compress-program is not permitted"
     return None
 
+def check_tree(tokens):
+    for t in tokens[1:]:
+        if _SORT_SHORT_O_RE.match(t) or t.startswith("--output"):
+            return "scout is read-only; tree -o/--output is not permitted"
+    return None
+
+def check_rg(tokens):
+    for t in tokens[1:]:
+        if re.match(r'^--(pre|hostname-bin)(=|$)', t):
+            return "scout is read-only; rg --pre/--hostname-bin run external programs"
+    return None
 
 def check_chezmoi(tokens):
     rest = tokens[1:]
@@ -249,6 +276,10 @@ def check_segment(segment):
         return check_sed(tokens)
     if first == "sort":
         return check_sort(tokens)
+    if first == "tree":
+        return check_tree(tokens)
+    if first in ("rg",):
+        return check_rg(tokens)
     if first == "awk" and _AWK_SYSTEM_RE.search(seg):
         return "scout is read-only; awk system() is not permitted"
     if first in ("jq", "yq") and _JQ_YQ_DENY_RE.search(seg):

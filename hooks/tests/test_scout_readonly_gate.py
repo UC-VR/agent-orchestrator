@@ -85,6 +85,16 @@ ALLOW_COMMANDS = [
     "git diff --stat",
     "sort -u f",
     "ls 2>&1 | head",
+    "sed -E 's/x/y/' f",
+    "sed -n '/foo/p' f",
+    "sort -k2 f",
+    "sort -r f",
+    "git remote -v",
+    "git remote show origin",
+    "git remote get-url origin",
+    "tree -L 2",
+    "rg -n foo",
+    "yq '.a' f.yaml",
 ]
 
 DENY_COMMANDS = [
@@ -119,6 +129,30 @@ DENY_COMMANDS = [
     "sed 'w out' f",
     "sed 's/a/b/w out' f",
     "sed '1e rm x' f",
+    # 1.8.3: option-order / cluster bypasses
+    "sed s/a/Z/ -i f",
+    "sed s/a/b/ f -i.bak",
+    "sed s/a/b/ --in-place f",
+    "sed s/a/b/ -ibak f",
+    "sed -n 1,5p -i f",
+    "sed s/a/b/ -ni f",
+    "sort -of f",
+    "sort -oout g",
+    "sort -k2 -of f",
+    "sort -ro f",
+    "sort --out=f g",
+    "sort --o=f g",
+    "sort --compress-program=sh f",
+    "git remote -v add x y",
+    "git remote -v remove origin",
+    "git remote rename a b",
+    "git remote update",
+    "yq --inplace '.a=1' f.yaml",
+    "yq -i '.a=1' f.yaml",
+    "tree -o out",
+    "tree -L 2 -o out",
+    "rg --pre sh foo",
+    "rg --pre=sh foo",
 ]
 
 

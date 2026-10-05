@@ -39,7 +39,7 @@ The `judge` is shipped as its own agent (`agents/judge.md`, `model: opus`): read
 
 Before delivering high-stakes output (code changes, multi-file edits, refactors, config changes), the orchestrator runs a verification gate:
 
-- Spawns the dedicated **`verifier`** subagent (agentType `verifier`) — an independent, adversarial, **read-only** checker with its own fresh context. It tries to *falsify* the producer's work, re-deriving correctness from the actual artifact and ground truth (files, command output, sources) rather than the producer's summary, and returns a binary **`VERIFIED` / `ISSUES FOUND`** verdict grounded in evidence.
+- Spawns the dedicated **`verifier`** subagent (agentType `agent-orchestrator:verifier`) — an independent, adversarial, **read-only** checker with its own fresh context. It tries to *falsify* the producer's work, re-deriving correctness from the actual artifact and ground truth (files, command output, sources) rather than the producer's summary, and returns a binary **`VERIFIED` / `ISSUES FOUND`** verdict grounded in evidence.
 - Uses **bounded retries** — on `ISSUES FOUND`, the blocking findings go back to the producer or a fixer agent, capped at ~1–2 iterations to avoid infinite loops.
 - **Escalates** the unresolved issue to the user after the cap instead of looping or shipping broken work.
 
@@ -181,6 +181,10 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.8.3
+
+- **1.8.3: scout gate — close sed/sort/git-remote option-order bypasses.** `sed` options are now validated anywhere in argv (GNU permutation made `sed s/a/b/ -i f`, `... f -i.bak`, `--in-place`, `-ibak`, `-ni` write in place); `sort` denies any short-option cluster containing `o` (`-of`, `-oout`, `-k2 -of`) and abbreviated `--output`/`--compress-program`; `git remote` takes its verb from the first non-flag argument (`git remote -v add x y` was a bypass). Also closed: `yq --inplace`, `tree -o`, `rg --pre`. Known residual (documented in the script header of the jq/yq rule): `less +!cmd`, `awk -f file`, `git diff --ext-diff`. README: namespaced `agent-orchestrator:verifier` in the verification-gate bullet.
 
 ### v1.8.2
 
