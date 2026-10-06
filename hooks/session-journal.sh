@@ -7,8 +7,8 @@
 #      transcript is available, grepped fail-open).
 #   a) Anchor pre-gate: parse the transcript JSONL and only proceed if the
 #      session was substantive (>=12 tool_use blocks AND >=2 file-edit blocks).
-#   b) Detached background capture: fire-and-forget `claude -p` (acceptEdits,
-#      tools = Read/Edit/Write) that decides whether to append ONE learning
+#   b) Detached background capture: fire-and-forget `claude -p` (bypassPermissions,
+#      restricted to tools Read/Edit/Write via --tools) that decides whether to append ONE learning
 #      block to the GLOBAL LEARNINGS.md. Detached via `setsid` on Linux/macOS
 #      or PowerShell Start-Process on Git-Bash-on-Windows (MINGW/MSYS/CYGWIN),
 #      so it survives this hook's own exit / process-tree kill at timeout.
@@ -125,12 +125,15 @@ PROMPT
 # the same acceptEdits config wrote fine to a NON-sensitive path, and
 # bypassPermissions wrote fine to the same journal path, isolating the
 # sensitive-path guard as the sole blocker. bypassPermissions is therefore
-# required; blast radius stays contained via --allowedTools "Read" "Edit"
-# "Write". Do not re-litigate the acceptEdits+allow-rule route without new evidence.
+# required. Blast radius is contained by `--tools Read,Edit,Write`, which
+# restricts the run to those three tools (verified 2026-10-06, CLI 2.1.291).
+# NOTE: `--allowedTools` only pre-approves tools and does NOT restrict them;
+# under bypassPermissions the run would otherwise have Bash/WebFetch/etc.
+# Do not re-litigate the acceptEdits+allow-rule route without new evidence.
 # stdin is closed (< /dev/null) so `claude -p` does not stall waiting on it.
 cat > "$launcher_file" <<LAUNCHER || exit 0
 #!/usr/bin/env bash
-"${claude_bin}" -p "\$(cat "${prompt_file}")" --permission-mode bypassPermissions --allowedTools "Read" "Edit" "Write" < /dev/null >/dev/null 2>&1
+"${claude_bin}" -p "\$(cat "${prompt_file}")" --permission-mode bypassPermissions --tools Read,Edit,Write < /dev/null >/dev/null 2>&1
 rm -f "${prompt_file}" 2>/dev/null || true
 rm -f "\$0" 2>/dev/null || true
 LAUNCHER

@@ -75,9 +75,9 @@ Honest properties: the hooks are Python and shell (`session-journal.sh` is bash 
 Registered in `hooks/hooks.json` (10s timeout). It always exits 0 (fail-open). On every session end it:
 
 1. Appends a `session_end` stub to `.claude/journal/<YYYY-MM-DD>-<session_id>.md` in the project (`cwd`). The stub records the reason, the session ID, and the transcript path. When the transcript is readable it adds a `spawns: worker=N verifier=N judge=N scout=N` line, grepped from the `subagent_type` values in the transcript.
-2. If the session was substantive (at least 12 `tool_use` blocks and at least 2 file-edit blocks: Edit, Write, MultiEdit, NotebookEdit), writes a capture prompt and launches a detached background `claude -p --permission-mode bypassPermissions --allowedTools Read Edit Write`. That run reads the transcript and either does nothing or appends one block to the **global** `~/.claude/journal/LEARNINGS.md` (not a per-project file). `bypassPermissions` is used because Claude Code's sensitive-path guard blocks non-interactive writes under `~/.claude/` otherwise; the allowed-tools list limits what the run can use.
+2. If the session was substantive (at least 12 `tool_use` blocks and at least 2 file-edit blocks: Edit, Write, MultiEdit, NotebookEdit), writes a capture prompt and launches a detached background `claude -p --permission-mode bypassPermissions --tools Read,Edit,Write`. That run reads the transcript and either does nothing or appends one block to the **global** `~/.claude/journal/LEARNINGS.md` (not a per-project file). `--tools Read,Edit,Write` restricts the run to those three tools; `--permission-mode bypassPermissions` avoids the prompt (Claude Code's sensitive-path guard blocks non-interactive writes under `~/.claude/` otherwise). Note that `--allowedTools` would not do this restricting: it only pre-approves tools.
 
-Each captured block starts with the sentinel line `<!-- learning -->` (counted whole-line, fixed-string, case-sensitive), then a heading and four fields:
+Each captured block starts with the sentinel line `<!-- learning -->`, then a heading and four fields:
 
 ```
 <!-- learning -->
@@ -94,7 +94,7 @@ A skill you invoke on demand ("reconcile learnings", "consolidate learnings"). I
 
 #### `scripts/skill-overlap.sh` dedupe helper
 
-Searches `~/.claude/skills`, `~/.claude/plugins`, `.claude/skills`, and `.claude/recipes` for `.md` files matching candidate keywords (up to 20 hits per root per keyword). It needs only `bash`, `grep`, and `find`. It lives in `scripts/` because it is a manual helper called by the reconcile skill, not a hook.
+Searches `SKILL.md` and `references/*.md` files (only those; `_archived`, `node_modules` and `.git` directories are skipped) for the candidate keywords. Roots, in order: any colon-separated paths in the `SKILL_OVERLAP_ROOTS` environment variable (prepended), then `~/.claude/skills`, `~/.claude/plugins`, `~/agents/skills`, `.claude/skills` and `.claude/recipes` under the current directory; roots that do not exist are skipped and the same directory is not scanned twice. Hits are de-duplicated per skill directory (each skill is listed once per keyword, with the file that matched); there is no hit-count cap. It needs only `bash`, `grep`, and `find`. It lives in `scripts/` because it is a manual helper called by the reconcile skill, not a hook.
 
 #### What does not exist
 
@@ -166,6 +166,10 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.8.5
+
+- **1.8.5: session-journal: `--tools` restricts the capture run (was `--allowedTools`, which only pre-approves); docs truth.** The detached `claude -p` capture ran under `bypassPermissions` with `--allowedTools Read Edit Write`, which pre-approves those tools but does not limit the available set, so the run also had Bash, Agent, WebFetch, WebSearch and the rest. It now passes `--tools Read,Edit,Write` (verified: the run lists only Edit, Read, Write). Docs: README §6 rewritten to match the shipped hooks (no SessionStart journal hook, no counter files, no reconcile threshold; the capture step invokes `claude -p`, so it is not zero-network); agent-teams advice removed (teams are disabled fleet-wide); install text lists all five agents; `skill-overlap.sh` description corrected; `reconcile-learnings` no longer claims a shipped scheduler; the orchestrator prose no longer recommends agent teams.
 
 ### v1.8.4
 
