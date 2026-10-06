@@ -55,7 +55,7 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
 - Every Agent-tool spawn must carry an **explicit `model` param** — no inheritance.
 - **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku is never used**.
 - A `PreToolUse` **`model-tier-gate`** hook denies any spawn with `haiku`/`fable`, and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
-- The same hook (since v1.7.2) also denies any Agent/Task spawn that passes a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1`.
+- The same hook (since v1.7.2) handles Agent/Task spawns that pass a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Since v1.8.6 the hook strips `name` (plus teammate-only `team_name`/`teamName`/`mode`) via `updatedInput` and lets the spawn proceed as a plain subagent when the CLI is ≥ 2.1.290 (the other tier rules still apply to the stripped input); on an older or undetectable CLI it denies instead. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1` (keeps `name`, no strip).
 - (Since v1.7.3) That named-spawn check only runs when the incoming call's `tool_name` is `Agent` or `Task` — any other tool (e.g. `Bash`, which also accepts a `name`-shaped argument for unrelated reasons) is allowed through untouched. This keeps the gate scoped to spawns even though its `hooks.json` matcher already restricts it to `Agent|Task`, so the script enforces the same scope it claims.
 
 This can cut cost substantially on well-scoped tasks — conditional on the review gate reliably catching cheap-model errors.
@@ -166,6 +166,10 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.8.6
+
+- **1.8.6: tier gate strips `name` (updatedInput) instead of denying when CLI ≥ 2.1.290; denies otherwise; teammate-only fields dropped; requires agent teams off (fleet default since 2026-10-06).** Version is read from `MODEL_TIER_GATE_CLI_VERSION`/`CLAUDE_CODE_VERSION`/`AI_AGENT` (set by Claude Code in hook processes), else `claude --version` cached per binary mtime. Haiku/fable/fork/unpinned denies still win over the strip.
 
 ### v1.8.5
 
