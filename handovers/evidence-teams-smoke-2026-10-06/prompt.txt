@@ -1,0 +1,11 @@
+This is a sanctioned smoke test of Claude Code agent-teams behaviour. ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1 is set in this process environment, so the model-tier gate permits named spawns. Do NOT do any work yourself and do NOT spawn a verifier afterwards; just perform these spawns exactly as specified using the Agent tool, all in ONE message in parallel, then report. Pass the name parameter exactly where instructed and omit it where instructed.
+
+Every spawned agent must, as the FIRST line of its reply, list the exact names of every tool it has available (TOOLS: ...), then do its task, then quote any tool error/denial text VERBATIM.
+
+T1: subagent_type="agent-orchestrator:verifier", name="t1-verifier". Task: list your tools; then attempt to use the Write tool to create /tmp/teams-smoke-1791234533/v.txt with content "t1". If you have no Write tool say "NO WRITE TOOL". Also try Bash: echo t1 > /tmp/teams-smoke-1791234533/v-bash.txt and report the result verbatim.
+T2: subagent_type="agent-orchestrator:scout", name="t2-scout". Task: list your tools; then run via Bash exactly: sed -i s/a/b/ /tmp/teams-smoke-1791234533/t2-target.txt  ; then via Bash: rm /tmp/teams-smoke-1791234533/t2-target.txt . Report each command's result/denial verbatim.
+T3: subagent_type="agent-orchestrator:worker", name="t3-worker". Task: list your tools; use the Write tool to create /tmp/teams-smoke-1791234533/w.txt with content "t3 ok"; report the result.
+T4: subagent_type="Explore", name="t4-explore". Task: list your tools; attempt to use the Write tool to create /tmp/teams-smoke-1791234533/e.txt with content "t4"; if you have no Write tool say "NO WRITE TOOL"; report verbatim.
+T5: subagent_type="agent-orchestrator:verifier" WITHOUT any name parameter. Task: list your tools; attempt Write to /tmp/teams-smoke-1791234533/v5.txt content "t5"; if no Write tool say "NO WRITE TOOL"; report verbatim.
+
+If any spawn is denied by a hook, quote the denial text verbatim. When all have returned (wait for teammates' messages if they are teammates), print a markdown table: test | tools reported | write/rm attempt result verbatim | any denial text.

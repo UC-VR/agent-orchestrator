@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash|Write|Agent",
+        "hooks": [ { "type": "command", "command": "cat >> /tmp/teams-smoke-1791234533/payloads.jsonl; echo >> /tmp/teams-smoke-1791234533/payloads.jsonl" } ] }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+[claude-code:unrecognized_model] {"model":"pool-fable[1m]","query_source":"sdk"}
+[claude-code:unrecognized_model] {"model":"pool-opus[1m]","query_source":"agent:custom:agent-orchestrator:verifier"}
+[claude-code:unrecognized_model] {"model":"pool-sonnet","query_source":"agent:custom:agent-orchestrator:scout"}

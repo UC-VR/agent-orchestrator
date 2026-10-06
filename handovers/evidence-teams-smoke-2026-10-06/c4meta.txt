@@ -1,0 +1,1 @@
+{"agentType":"c4-verifier","description":"C4 verifier write check","name":"c4-verifier","spawnDepth":0,"requestShape":"background","requestNonInteractive":true,"model":"opus","taskKind":"in_process_teammate","teamName":"session-da2bcdb5","color":"purple","planModeRequired":false,"customAgentType":"agent-orchestrator:verifier","permissionMode":"bypassPermissions"}

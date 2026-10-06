@@ -1,0 +1,21 @@
+0 6bfbaaff agent_id= None agent_type= None Bash {"command": "ls", "description": "List files in current directory"}
+2 3d24df90 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T1 named verifier smoke", "prompt": "SMOKE TEST T1 (sanctioned 
+4 3d24df90 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T2 named scout smoke", "prompt": "SMOKE TEST T2 (sanctioned too
+6 3d24df90 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T3 named worker smoke", "prompt": "SMOKE TEST T3 (sanctioned to
+8 3d24df90 agent_id= acecd89e3f868d20d agent_type= agent-orchestrator:worker Write {"file_path": "/tmp/teams-smoke-1791234533/w.txt", "content": "t3 ok"}
+10 3d24df90 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T4 named Explore smoke", "prompt": "SMOKE TEST T4 (sanctioned t
+12 3d24df90 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T5 unnamed verifier smoke", "prompt": "SMOKE TEST T5 (sanctione
+14 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T1 verifier named spawn test", "prompt": "Begin your reply with
+16 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T2 scout readonly-gate test", "prompt": "Begin your reply with 
+18 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T3 worker named spawn test", "prompt": "Begin your reply with \
+20 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T4 Explore named spawn test", "prompt": "Begin your reply with 
+22 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T5 verifier unnamed spawn test", "prompt": "Begin your reply wi
+24 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T6-a worker liveness test", "prompt": "Reply with exactly one l
+26 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T6-b worker liveness test", "prompt": "Reply with exactly one l
+28 7c425101 agent_id= None agent_type= agent-orchestrator:orchestrator Agent {"description": "T6-c worker liveness test", "prompt": "Reply with exactly one l
+30 da2bcdb5 agent_id= None agent_type= None Agent {"description": "C1 verifier tool check", "prompt": "Begin with TOOLS: followed 
+32 da2bcdb5 agent_id= None agent_type= None Agent {"description": "C2 scout hook check", "prompt": "Begin with TOOLS: followed by 
+34 da2bcdb5 agent_id= None agent_type= None Agent {"description": "C3 worker write check", "prompt": "Begin with TOOLS: followed b
+36 da2bcdb5 agent_id= ac3-worker-2198de0832f34587 agent_type= c3-worker Write {"file_path": "/tmp/teams-smoke-1791234533/w.txt", "content": "c3 ok"}
+38 da2bcdb5 agent_id= None agent_type= None Agent {"description": "C4 verifier write check", "prompt": "Start your reply with TOOL
+40 da2bcdb5 agent_id= ac2-scout-32b2c21af56ddb71 agent_type= c2-scout Bash {"command": "ls -la /tmp/teams-smoke-1791234533", "description": "List sandbox d

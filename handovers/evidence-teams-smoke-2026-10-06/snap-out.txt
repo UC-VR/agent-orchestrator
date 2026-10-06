@@ -1,0 +1,75 @@
+=== agent-ad62b1c0eceee8cf4.jsonl
+ keys: ['type', 'systemPrompt', 'reminderFold', 'echoWireToolInputs', 'contextRendering']
+ sysprompt len 9368 | head: You are running agent-orchestrator v1.8.4. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anythin
+   contains verifier True
+   contains Verifier True
+   contains scout False
+   contains Scout False
+   contains worker False
+   contains Worker False
+   contains read-only True
+   contains Read-only False
+   contains agent-orchestrator True
+  reminderFold : false
+  echoWireToolInputs : true
+  contextRendering : "announced"
+=== agent-at1-verifier-0e81023d17dd5eee.jsonl
+ keys: ['type', 'systemPrompt', 'reminderFold', 'echoWireToolInputs', 'contextRendering']
+ sysprompt len 16360 | head:  You are an interactive agent that helps users with software engineering tasks.  IMPORTANT: Assist with authorized security testing, defensive security, CTF cha
+   contains verifier True
+   contains Verifier True
+   contains scout False
+   contains Scout False
+   contains worker False
+   contains Worker False
+   contains read-only True
+   contains Read-only False
+   contains agent-orchestrator True
+  reminderFold : false
+  echoWireToolInputs : true
+  contextRendering : "announced"
+=== agent-at2-scout-26a309f5c1b79ebe.jsonl
+ keys: ['type', 'systemPrompt', 'reminderFold', 'echoWireToolInputs', 'contextRendering']
+ sysprompt len 14000 | head:  You are an interactive agent that helps users with software engineering tasks.  IMPORTANT: Assist with authorized security testing, defensive security, CTF cha
+   contains verifier True
+   contains Verifier False
+   contains scout True
+   contains Scout True
+   contains worker True
+   contains Worker False
+   contains read-only True
+   contains Read-only True
+   contains agent-orchestrator True
+  reminderFold : false
+  echoWireToolInputs : true
+  contextRendering : "announced"
+=== agent-at3-worker-4884e47e758adc4a.jsonl
+ keys: ['type', 'systemPrompt', 'reminderFold', 'echoWireToolInputs', 'contextRendering']
+ sysprompt len 10690 | head:  You are an interactive agent that helps users with software engineering tasks.  IMPORTANT: Assist with authorized security testing, defensive security, CTF cha
+   contains verifier False
+   contains Verifier False
+   contains scout False
+   contains Scout False
+   contains worker True
+   contains Worker False
+   contains read-only False
+   contains Read-only False
+   contains agent-orchestrator True
+  reminderFold : false
+  echoWireToolInputs : true
+  contextRendering : "announced"
+=== agent-at4-explore-dae69d597552720b.jsonl
+ keys: ['type', 'systemPrompt', 'reminderFold', 'echoWireToolInputs', 'contextRendering']
+ sysprompt len 8195 | head:  You are an interactive agent that helps users with software engineering tasks.  IMPORTANT: Assist with authorized security testing, defensive security, CTF cha
+   contains verifier False
+   contains Verifier False
+   contains scout False
+   contains Scout False
+   contains worker False
+   contains Worker False
+   contains read-only False
+   contains Read-only False
+   contains agent-orchestrator False
+  reminderFold : false
+  echoWireToolInputs : true
+  contextRendering : "announced"

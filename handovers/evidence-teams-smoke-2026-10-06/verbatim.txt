@@ -1,0 +1,14 @@
+{"session_id": "3d24df90-b4ac-4b24-9041-bea921231c63", "cwd": "/tmp/teams-smoke-1791234533", "prompt_id": "384f0fa0-b85e-4b53-9f11-a993e2f556d6", "permission_mode": "bypassPermissions", "agent_id": "acecd89e3f868d20d", "agent_type": "agent-orchestrator:worker", "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "/tmp/teams-smoke-1791234533/w.txt", "content": "t3 ok"}, "tool_use_id": "toolu_01W85gdo9rLynoUT9CNyJnhS"}
+
+{"session_id": "da2bcdb5-fc74-47ce-a279-dabbf01dd8ce", "cwd": "/tmp/teams-smoke-1791234533", "prompt_id": "bef6bf56-e366-4655-98a4-0493c00ee174", "permission_mode": "bypassPermissions", "agent_id": "ac3-worker-2198de0832f34587", "agent_type": "c3-worker", "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "/tmp/teams-smoke-1791234533/w.txt", "content": "c3 ok"}, "tool_use_id": "toolu_019hesAw55esswpbj31SzYob"}
+
+{"session_id": "da2bcdb5-fc74-47ce-a279-dabbf01dd8ce", "cwd": "/tmp/teams-smoke-1791234533", "prompt_id": "e627ae97-b2b2-448e-a9d0-80de9d238cf0", "permission_mode": "bypassPermissions", "agent_id": "ac2-scout-32b2c21af56ddb71", "agent_type": "c2-scout", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls -la /tmp/teams-smoke-1791234533", "description": "List sandbox directory contents"}, "tool_use_id": "toolu_01KN8LZzwF4YnMMp6yYZsKdr"}
+
+14
+agent-at6-a-8b99fd1256e3efe6.jsonl
+agent-at6-a-8b99fd1256e3efe6.meta.json
+agent-at6-b-818a32bd41fbee89.jsonl
+agent-at6-b-818a32bd41fbee89.meta.json
+agent-at6-c-0cd66355f77c1fea.jsonl
+agent-at6-c-0cd66355f77c1fea.meta.json
+0
