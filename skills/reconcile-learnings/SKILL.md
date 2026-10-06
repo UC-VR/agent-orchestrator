@@ -5,9 +5,9 @@ description: "Reconcile the self-learning journal: consolidate <!-- learning -->
 
 # reconcile-learnings
 
-Consolidate accumulated learnings into skill/recipe improvements. This is
-triggered by the **weekly scheduled task** (`claude-weekly-reconcile`, Sundays
-09:00) or by **manual invocation** any time you want to reconcile.
+Consolidate accumulated learnings into skill/recipe improvements. This skill is
+run on **manual invocation** any time you want to reconcile. It is intended to
+run weekly, but no scheduler is shipped with this plugin.
 
 **PROPOSE-not-apply throughout.** You never auto-apply changes. Every proposed
 edit goes through the `skill-creator` skill and is reviewed before it takes
