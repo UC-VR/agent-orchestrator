@@ -145,3 +145,8 @@ file handovers/HANDOVER-2026-09-07-orchestrator.md
 
 ## Correction 2026-09-10
 - dotfiles `main` observed at `faa3005` (not `34e9acf`) before commit `5cc210d` (honcho removal); `git worktree list` shows no `wt-ixadopt`; `fix/ix-settings-adopt` state not re-checked — re-derive before resuming Wave 5.1/ix-adopt.
+
+## Closure 2026-10-06
+Main handover: CLOSED. Wave 5.1 superseded (junction script removed 05aa0bd 2026-09-13; profile delivered by run_onchange_after_10-sync-powershell-profile); ix-adopt landed via 4d5cef6 (fix/ix-settings-adopt deleted); parity.tests.ps1 PASS on lp under pwsh7 and PS5.1; MagicDNS self-resolved; ix pubkey already on vr-oc1; retired clones/backups removed. Still open → tracked in BACKLOG.md 2026-10-06 entry: identity-ix email, Connections.db rotation, authorized_keys on morpheus (offline)/vr-coolify (key refused), Greenshot, chezmoi version convergence, 1P SSH agent, lp apply (blocked on settings.json source fix).
+Addendum (Cloudflare/Infinox): owner confirms cutover happened — api.new/ix-new 302→infinox.com at edge. ../skills commits c57c53a + 5e5d47a still unpushed (on lp only). ~/cloudflare on lp not in git (1280 files, contains token/key JSON — sweep first). Remaining CF items (revoke staging cert, dupe cert, W1.1, /fsc /scb, uploads, WP redirects, Tailscale removal) need the Infinox op session on lp.
+Addendum 2 (Shift+Enter): still open, WT binding still in template; owner to pick A/B/C.
