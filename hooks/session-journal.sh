@@ -130,10 +130,11 @@ PROMPT
 # NOTE: `--allowedTools` only pre-approves tools and does NOT restrict them;
 # under bypassPermissions the run would otherwise have Bash/WebFetch/etc.
 # Do not re-litigate the acceptEdits+allow-rule route without new evidence.
+# --model sonnet pins the unattended run off haiku (it writes persistent memory).
 # stdin is closed (< /dev/null) so `claude -p` does not stall waiting on it.
 cat > "$launcher_file" <<LAUNCHER || exit 0
 #!/usr/bin/env bash
-"${claude_bin}" -p "\$(cat "${prompt_file}")" --permission-mode bypassPermissions --tools Read,Edit,Write < /dev/null >/dev/null 2>&1
+"${claude_bin}" -p "\$(cat "${prompt_file}")" --model sonnet --permission-mode bypassPermissions --tools Read,Edit,Write < /dev/null >/dev/null 2>&1
 rm -f "${prompt_file}" 2>/dev/null || true
 rm -f "\$0" 2>/dev/null || true
 LAUNCHER

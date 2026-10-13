@@ -26,11 +26,13 @@ import sys
 import json
 
 # --- allowlists -------------------------------------------------------------
+# `env` and `printenv` are deliberately NOT allow-listed (1.8.7): they dump the process
+# environment (secrets). With env gone, no wrapper command re-enters check_tokens.
 
 ALLOWLIST = {
     "git", "chezmoi", "wc", "du", "stat", "ls", "find", "cat", "head", "tail",
     "less", "grep", "rg", "jq", "yq", "sort", "uniq", "cut", "awk", "tr",
-    "echo", "printf", "pwd", "whoami", "hostname", "date", "env", "printenv",
+    "echo", "printf", "pwd", "whoami", "hostname", "date",
     "which", "where", "type", "file", "readlink", "realpath", "basename",
     "dirname", "tree", "diff", "cmp", "md5sum", "sha256sum", "shasum",
     "column", "nl", "fold", "paste", "test", "[", "true", "false", "sed",
@@ -82,7 +84,6 @@ _SED_SCRIPT_RE = re.compile(
     r'|s/(?:[^/\\]|\\.)*/(?:[^/\\]|\\.)*/[gpiIm0-9]*)\Z')
 _SED_FLAGS_RE = re.compile(r'^-[nErs]+$|^--(quiet|silent|regexp-extended)$')
 _JQ_YQ_SHORT_I_RE = re.compile(r'^-[A-Za-z]*i')
-_ENV_SPLIT_RE = re.compile(r'^-[^-]*S|^--s')   # env -S / --split-string[=...] execs its value
 # Known residual (not closed here; need config/interactive features): `less +!cmd`,
 # `git diff --ext-diff/--textconv` (need repo/user config), and unquoted glob
 # flags like `sed s/a/b/ -[i] f` (only bite if a file literally named `-i` exists).
@@ -244,35 +245,6 @@ def check_chezmoi(tokens):
     return None
 
 
-def check_env(tokens):
-    """env with no wrapped command (bare, flags, VAR=val only) is fine; env used
-    to launch another program recurses into the full segment check on the wrapped
-    command (so `env sed -i ...` is judged exactly like `sed -i ...`). env's own
-    flags and VAR=val assignments are skipped; -u/-C/-a (and long forms) take a
-    value, which must not be mistaken for the wrapped command."""
-    i = 1
-    while i < len(tokens):
-        t = tokens[i]
-        if _ENV_SPLIT_RE.match(t):
-            return "scout is read-only; env -S/--split-string executes its argument"
-        if t.startswith("--"):
-            name = t[2:].split("=", 1)[0]
-            if "=" not in t and name and any(
-                    l.startswith(name) for l in ("unset", "chdir", "argv0")):
-                i += 1   # value is the next token
-        elif t.startswith("-") and len(t) > 1:
-            for pos, ch in enumerate(t[1:], 1):
-                if ch in "uCa":
-                    if pos == len(t) - 1:
-                        i += 1   # value is the next token
-                    break        # else attached value (-uFOO)
-        elif re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', t):
-            pass
-        else:
-            return check_tokens(tokens[i:])
-        i += 1
-    return None
-
 def check_uniq(tokens):
     """`uniq [OPTION] [INPUT [OUTPUT]]`: a second positional is an output file."""
     positionals = 0
@@ -367,8 +339,6 @@ def check_tokens(tokens):
         return check_awk(tokens)
     if first in ("jq", "yq"):
         return check_jq_yq(first, tokens)
-    if first == "env":
-        return check_env(tokens)
     if first == "uniq":
         return check_uniq(tokens)
     return None

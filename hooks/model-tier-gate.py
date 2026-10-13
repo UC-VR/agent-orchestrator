@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # PreToolUse gate: enforce model-tier policy on Agent/Task spawns. FAIL-OPEN on any error.
+# Policy: subagents run sonnet or opus. fable is banned everywhere (orchestrator main thread only).
+# Haiku 5.5 ("haiku", "pool-haiku", "claude-haiku-5-5") is allowed ONLY for the bare agent types in
+# HAIKU_OK (cheap enumeration/lookup work); never for verifier, judge, security-reviewer, workers or
+# any code-editing type. Haiku 4.x / 3.x ids are denied for every type. Precedence: fork deny,
+# forbidden (fable) deny, haiku deny, unpinned-no-model deny all take effect over any input strip.
 import os, sys, json, re, subprocess, shutil
 
 MIN_STRIP_VERSION = (2, 1, 290)   # first CLI where rules/safety checks re-run after a hook rewrites input
@@ -11,8 +16,16 @@ STRIP_NOTE = ("Agent spawn: `name` was removed (agent teams are disabled by flee
 ISOLATION_NOTE = ("Agent spawn: `isolation` was removed (cwd is not a git repo, so a worktree "
                   "cannot be created). The agent runs in the shared cwd.")
 
-UNPINNED = {"general-purpose", "explore", "plan", "claude", "claude-code-guide"}
-FORBIDDEN = ("haiku", "fable")
+# Built-in types with no frontmatter pin: with no explicit model they would inherit the caller's model.
+UNPINNED = {"general-purpose", "explore", "plan", "claude", "claude-code-guide", "statusline-setup"}
+FORBIDDEN = ("fable",)
+# Bare lowercase subagent_type values (after prefix strip) that may run Haiku 5.5.
+HAIKU_OK = {"scout", "explore", "claude-code-guide", "statusline-setup"}
+# Never Haiku, even if someone later adds them to HAIKU_OK (enforced below).
+HAIKU_NEVER = {"verifier", "judge", "security-reviewer"}
+HAIKU_OK -= HAIKU_NEVER
+# Haiku 4.x / 3.x model-id substrings: always denied.
+HAIKU_OLD = ("haiku-4", "3-5-haiku", "3-haiku", "claude-haiku-4")
 
 def deny(reason):
     print(json.dumps({"hookSpecificOutput": {
@@ -126,17 +139,29 @@ def main():
         deny("Model-tier policy: fork inherits the orchestrator's model tier; spawn a "
              "typed agent instead. Override: ORCHESTRATOR_ALLOW_FORK=1.")
 
-    # Rule 1: explicit forbidden model tier
+    # Rule 1: explicit forbidden model tier (fable)
     if model_s and any(f in model_s for f in FORBIDDEN):
-        deny("Blocked by model-tier policy: subagents run sonnet or opus only "
-             "(never haiku, never fable — fable is reserved for the orchestrator "
-             "main thread). Re-spawn with model: sonnet or opus.")
+        deny("Blocked by model-tier policy: fable is reserved for the orchestrator "
+             "main thread and is never used for subagents. Re-spawn with model: sonnet or opus.")
+    # Rule 1b: Haiku is allowlisted by agent type, and only the 5.x line
+    if "haiku" in model_s:
+        if any(o in model_s for o in HAIKU_OLD):
+            deny("Blocked by model-tier policy: Haiku 4.x / 3.x model ids are never allowed. "
+                 "Haiku 5.5 (model: haiku or claude-haiku-5-5) is allowed only for scout, "
+                 "Explore, claude-code-guide and statusline-setup; everything else runs "
+                 "sonnet or opus.")
+        if bare not in HAIKU_OK:
+            deny("Blocked by model-tier policy: Haiku 5.5 is allowed only for scout, Explore, "
+                 "claude-code-guide and statusline-setup (cheap enumeration/lookup work) - "
+                 "never for verification, judgement, code edits or security review. "
+                 "Re-spawn %s with model: sonnet or opus." % (bare or "this agent"))
     # Rule 2: unpinned agent type with no explicit model (would inherit caller's model)
     if not model_s and bare in UNPINNED:
         deny("Model-tier policy: unpinned agent types "
-             "(general-purpose/Explore/Plan/claude) must be spawned with an explicit "
-             "model: sonnet or opus — omitting it inherits the caller's model and can "
-             "leak fable/haiku onto delegated work.")
+             "(general-purpose/Explore/Plan/claude/claude-code-guide/statusline-setup) must be "
+             "spawned with an explicit model: sonnet or opus (haiku only for Explore/"
+             "claude-code-guide/statusline-setup) - omitting it inherits the caller's model "
+             "and can leak fable onto delegated work.")
     # Rule 3/default: allow (pinned types with no model resolve to their frontmatter pin)
     if stripped:
         print(json.dumps({"hookSpecificOutput": {

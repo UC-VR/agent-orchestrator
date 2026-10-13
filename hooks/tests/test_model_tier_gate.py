@@ -43,9 +43,39 @@ def out(result):
     return result.get("hookSpecificOutput", {})
 
 class TestModelTierGate(unittest.TestCase):
-    def test_haiku_denied(self):
-        self.assertTrue(is_deny(spawn({"subagent_type": "agent-orchestrator:worker", "model": "haiku"})))
-        self.assertTrue(is_deny(spawn({"subagent_type": "general-purpose", "model": "claude-haiku-4-5"})))
+    def test_haiku_allowed_for_allowlisted_types(self):
+        for t, m in (("scout", "haiku"), ("agent-orchestrator:scout", "haiku"),
+                     ("explore", "claude-haiku-5-5"), ("Explore", "haiku"),
+                     ("claude-code-guide", "pool-haiku"), ("statusline-setup", "haiku")):
+            self.assertEqual(spawn({"subagent_type": t, "model": m}), {}, (t, m))
+
+    def test_haiku_denied_for_other_types(self):
+        for t in ("agent-orchestrator:worker", "general-purpose", "agent-orchestrator:verifier",
+                  "agent-orchestrator:judge", "agent-orchestrator:security-reviewer",
+                  "security-reviewer", "plan", "claude"):
+            for m in ("haiku", "claude-haiku-5-5"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+        self.assertTrue(is_deny(spawn({"model": "haiku"})))   # missing type -> general-purpose
+
+    def test_haiku_old_ids_denied_everywhere(self):
+        for t in ("scout", "explore", "claude-code-guide", "statusline-setup"):
+            for m in ("claude-haiku-4-5", "claude-3-5-haiku-20241022", "claude-3-haiku-20240307",
+                      "haiku-4-5"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_fable_denied_even_for_haiku_ok_types(self):
+        for t in ("scout", "explore", "claude-code-guide", "statusline-setup"):
+            self.assertTrue(is_deny(spawn({"subagent_type": t, "model": "fable"})), t)
+
+    def test_statusline_setup_unpinned(self):
+        self.assertTrue(is_deny(spawn({"subagent_type": "statusline-setup"})))
+        self.assertEqual(spawn({"subagent_type": "statusline-setup", "model": "sonnet"}), {})
+
+    def test_haiku_deny_message(self):
+        self.assertIn("Haiku 5.5 is allowed only for",
+                      reason(spawn({"subagent_type": "agent-orchestrator:worker", "model": "haiku"})))
+        self.assertIn("4.x / 3.x",
+                      reason(spawn({"subagent_type": "scout", "model": "claude-haiku-4-5"})))
 
     def test_fable_denied(self):
         self.assertTrue(is_deny(spawn({"subagent_type": "agent-orchestrator:worker", "model": "fable"})))
@@ -198,9 +228,10 @@ class TestNameStrip(unittest.TestCase):
         self.assertEqual(spawn({"subagent_type": "general-purpose"}), {"hookSpecificOutput": {
             "hookEventName": "PreToolUse", "permissionDecision": "deny",
             "permissionDecisionReason": "Model-tier policy: unpinned agent types "
-            "(general-purpose/Explore/Plan/claude) must be spawned with an explicit "
-            "model: sonnet or opus — omitting it inherits the caller's model and can "
-            "leak fable/haiku onto delegated work."}})
+            "(general-purpose/Explore/Plan/claude/claude-code-guide/statusline-setup) must be "
+            "spawned with an explicit model: sonnet or opus (haiku only for Explore/"
+            "claude-code-guide/statusline-setup) - omitting it inherits the caller's model "
+            "and can leak fable onto delegated work."}})
 
 class TestIsolationStrip(unittest.TestCase):
     TI = {"subagent_type": "agent-orchestrator:worker", "prompt": "p", "isolation": "worktree"}
