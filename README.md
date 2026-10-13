@@ -6,6 +6,8 @@ A Claude Code plugin that packages an **orchestrator-only** agent: a main thread
 
 The orchestrator philosophy is **delegate everything**. The orchestrator's job is planning, routing, and judgement — not execution. All file edits, shell commands, builds, tests, and research are performed by subagents it spawns. The orchestrator uses read-only tools (Read/Glob/Grep) solely to scope work and write good delegation prompts, then relays a clear synthesized answer to you.
 
+One narrow exception (since v1.9.0): the orchestrator may call the corp Projektor MCP tools (`mcp__plugin_projektor-corp_projektor__*`, from the vr-orchestra `projektor-corp` plugin) directly for lightweight task tracking. Heavier Projektor work is still delegated; if the tools are absent it delegates instead.
+
 This plugin adds six patterns on top of plain delegation.
 
 ### 1. Dispatch protocol (skill & agent matching)
@@ -166,6 +168,10 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.9.0
+
+- **1.9.0: orchestrator: may call corp Projektor MCP tools (projektor-corp plugin) directly for lightweight tracking; doctrine note. Requires vr-orchestra projektor-corp ≥0.1.0 (optional; absent tools → delegate).** The orchestrator `tools:` allowlist gains `mcp__plugin_projektor-corp_projektor__*` and a Rules exception bullet. Corp Projektor (projects.ai.infinox.io) is for FDE / Infinox work only; personal and Grok Bot matters belong to the personal instance (projects.ucvc.email), which is not wired here.
 
 ### v1.8.6
 
