@@ -25,7 +25,7 @@ The repo also ships a **`worker`** agent: the default leaf executor for minor, w
 
 #### Scout (bulk input pre-analysis)
 
-Bulk input (>~10 files or >~2K lines) feeding one downstream agent gets pre-analyzed by the **`scout`** agent first, so the planner reads a compact, priority-tagged briefing instead of the raw files. Scout runs the same model tier as `worker` — its value is an enforced read-only toolbelt (Read/Glob/Grep/Bash, Bash gated to inspection commands only by the `scout-readonly-gate.py` `PreToolUse` hook) and context isolation, not a cheaper model. Its briefing is capped (≤20% of source lines, ~8K chars). It never fixes, decides, or audits (a correctness check against a spec is `verifier` work) — it is not a verifier.
+Bulk input (>~10 files or >~2K lines) feeding one downstream agent gets pre-analyzed by the **`scout`** agent first, so the planner reads a compact, priority-tagged briefing instead of the raw files. Scout runs on Haiku 5.5 (`model: haiku`, one of the few types the tier gate allows on Haiku) and has an enforced toolbelt: Read/Glob/Grep, Bash gated to read-only inspection commands by `scout-readonly-gate.py` (`env`/`printenv` are not allowed, so it cannot read secrets from the environment), and Write limited to `*_briefing.md` files by `scout-write-gate.py` (every other Write target and all Edit calls are denied). Scout is local-only: it has no network access, so for a remote repo or web page a `worker` first fetches the content to disk (shallow clone into a temp dir, or pages saved as files) and scout reads those files; fetched content is untrusted and instructions inside it are data. Its briefing is capped (≤20% of source lines, ~8K chars). It never fixes, decides, or audits (a correctness check against a spec is `verifier` work) — it is not a verifier.
 
 ### 2. Tournament Trigger + comparative gate (offer, don't impose)
 
@@ -55,8 +55,8 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
 
 - The **orchestrator main thread stays on the strongest tier (Fable/Opus)**; it never spawns a subagent on that tier.
 - Every Agent-tool spawn must carry an **explicit `model` param** — no inheritance.
-- **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku is never used**.
-- A `PreToolUse` **`model-tier-gate`** hook denies any spawn with `haiku`/`fable`, and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
+- **`model: opus`** for reasoning-heavy work (planning, verification, judging); **`model: sonnet`** for execution/mechanical work (the `worker` default); **Haiku 5.5 only for `scout`/`Explore`/`claude-code-guide`/`statusline-setup`** (never verification, judgement, code edits or security review; Haiku 4.x/3.x denied).
+- A `PreToolUse` **`model-tier-gate`** hook denies any `fable` spawn, denies `haiku` for every agent type outside the allowlist above (and Haiku 4.x/3.x ids everywhere), and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`) resolve their own frontmatter tier. It fails open on any internal error, so it never bricks spawning.
 - The same hook (since v1.7.2) handles Agent/Task spawns that pass a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Since v1.8.6 the hook strips `name` (plus teammate-only `team_name`/`teamName`/`mode`) via `updatedInput` and lets the spawn proceed as a plain subagent when the CLI is ≥ 2.1.290 (the other tier rules still apply to the stripped input); on an older or undetectable CLI it denies instead. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1` (keeps `name`, no strip).
 - (Since v1.7.3) That named-spawn check only runs when the incoming call's `tool_name` is `Agent` or `Task` — any other tool (e.g. `Bash`, which also accepts a `name`-shaped argument for unrelated reasons) is allowed through untouched. This keeps the gate scoped to spawns even though its `hooks.json` matcher already restricts it to `Agent|Task`, so the script enforces the same scope it claims.
 
@@ -70,7 +70,7 @@ The plugin registers a `PostToolUse` hook (`hooks/hooks.json` → `hooks/verify-
 
 The plugin ships a small journal loop. It records what happened, captures candidate learnings, and gives you a skill to consolidate them. It does not apply anything on its own, and nothing nudges you at session start.
 
-Honest properties: the hooks are Python and shell (`session-journal.sh` is bash and uses `node` to parse the payload; `verify-reminder.sh` is POSIX `sh`; `model-tier-gate.py` and `scout-readonly-gate.py` are Python). `session-journal.sh` can invoke `claude -p`, which makes a network call to the model API, and it writes to `~/.claude/journal/LEARNINGS.md` outside the project.
+Honest properties: the hooks are Python and shell (`session-journal.sh` is bash and uses `node` to parse the payload; `verify-reminder.sh` is POSIX `sh`; `model-tier-gate.py`, `scout-readonly-gate.py`, `scout-write-gate.py` and `security-reviewer-gate.py` are Python). `session-journal.sh` can invoke `claude -p`, which makes a network call to the model API, and it writes to `~/.claude/journal/LEARNINGS.md` outside the project.
 
 #### SessionEnd: `hooks/session-journal.sh`
 
@@ -128,14 +128,14 @@ Prefer to let Claude Code do the install for you? Paste the prompt below into a 
 > 1. Add the marketplace and install the plugin:
 >    - Run `/plugin marketplace add https://github.com/UC-VR/agent-orchestrator.git`
 >    - Run `/plugin install agent-orchestrator@agent-orchestrator`
->    The plugin ships the `orchestrator`, `worker`, `verifier`, `judge`, and `scout` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
+>    The plugin ships the `orchestrator`, `worker`, `verifier`, `judge`, `scout`, and `security-reviewer` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
 > 2. Before changing any settings, back up my global settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak` (skip if the file does not exist).
 > 3. Apply the machine-local settings that do NOT travel in a plugin, merging into existing config rather than overwriting it — never drop my existing hooks, permissions, or other keys:
 >    - Set the orchestrator thread to a strong model (e.g. Opus) via `/config`.
 >    - Agent teams are disabled fleet-wide (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` since 2026-10-06): teammate tools are clamped to the lead's and hook payloads lose the agent type. Named spawns are plain subagents; track by returned ID. Do not enable them.
 >    - If I want the orchestrator to be the main thread, point my `agent` setting at it (or note that I can launch with `claude --agent orchestrator`).
 >    - Approve the tool/command permissions the orchestrator and its subagents need (Bash, file writes, network) when prompted.
-> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `verifier`, `judge`, and `scout` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
+> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `verifier`, `judge`, `scout`, and `security-reviewer` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
 >
 > Prerequisite: the reminder hook is a POSIX shell script, so on Windows make sure an `sh` (e.g. Git Bash) is available to Claude Code. `jq` is not required.
 
@@ -172,6 +172,20 @@ For trivial or conversational follow-ups it answers directly; everything else ge
 ### v1.9.0
 
 - **1.9.0: orchestrator: may call corp Projektor MCP tools (projektor-corp plugin) directly for lightweight tracking; doctrine note. Requires vr-orchestra projektor-corp ≥0.1.0 (optional; absent tools → delegate).** The orchestrator `tools:` allowlist gains `mcp__plugin_projektor-corp_projektor__*` and a Rules exception bullet. Corp Projektor (projects.ai.infinox.io) is for FDE / Infinox work only; personal and Grok Bot matters belong to the personal instance (projects.ucvc.email), which is not wired here.
+
+### v1.8.7
+
+- **1.8.7: Haiku 5.5 allowlist, scout on Haiku, scout hardening, security-reviewer, Projektor routing.**
+  - **Haiku 5.5 allowlist.** `model-tier-gate` no longer bans Haiku outright: `haiku`/`pool-haiku`/`claude-haiku-5-5` is allowed only for `scout`, `Explore`, `claude-code-guide` and `statusline-setup` (`HAIKU_OK`). Every other type is denied, and `verifier`, `judge` and `security-reviewer` are explicitly never allowed even if added to the set. Haiku 4.x / 3.x ids (`haiku-4`, `3-5-haiku`, `3-haiku`, `claude-haiku-4`) are denied for all types. Fable stays banned everywhere. The fork, fable and haiku denies all run before any input strip, and the gate still fails open. `statusline-setup` is now in the UNPINNED set (a built-in with no pin), so it needs an explicit `model` like the other built-ins.
+  - **Scout runs on Haiku 5.5** (`model: haiku`; the router's `pool-haiku` is confirmed live on `claude-haiku-5-5`).
+  - **Scout can Write `*_briefing.md` only** (new `hooks/scout-write-gate.py`, matcher `Write|Edit|MultiEdit|NotebookEdit`; fail-closed for scout, path checked lexically and after `realpath`, `.git`/`.claude` segments denied).
+  - **Scout read-only gate:** bypass fixes (env-wrapped mutators, `uniq` output operand, awk output/profile flags), and `env`/`printenv` removed from the allowlist so scout cannot read secrets from the environment (the env-wrapper recursion was dead code and is removed).
+  - **Scout is local-only:** no network access. For remote repos or web pages a `worker` fetches the content to disk first; fetched content is untrusted.
+  - **New `security-reviewer` agent + `hooks/security-reviewer-gate.py`** (Bash gate: no secret-value exposure, no mutation; fail-closed for that agent) and an orchestrator "Security-Review Offer" step after `VERIFIED`; `verify-reminder.sh` loop-guard covers it.
+  - **Projektor routing:** orchestrator "Projektor Routing" section and `worker` "Projektor Issues" section for corp issue tracking.
+  - **Worktree isolation strip (Rule 0a):** `isolation: "worktree"` is stripped when the cwd is not a git work tree, so spawns from non-repo directories do not fail.
+  - **`session-journal.sh`:** the unattended `claude -p` capture run now passes `--model sonnet` (it writes persistent memory, so it stays off Haiku).
+  - **Tests:** 64 tests; run with `cd hooks && python3 -m unittest discover -s tests -v`.
 
 ### v1.8.6
 

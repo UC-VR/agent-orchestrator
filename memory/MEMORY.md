@@ -66,3 +66,7 @@
 - orchestra-publish (lp, no remote, 12 commits, 2026-07-01) = stale ancestor of agents\agent-orchestrator (80% file overlap, all diverged except LICENSE); unique files `_skillgen.json`, `hooks/session-start-skill-review.sh` — eyeball then archive. Not on vr-oc1.
 - GitHub auth on lp: gh tokens invalid for UC-VR and vr-ixfin; HTTPS remotes + GCM with nothing cached; SSH aliases github.com-vr / github.com-ix (1Password SSH agent, pubkey-only IdentityFile) need GUI approval → headless `ssh -T` hangs. Global `url.https://github.com/.insteadOf=git@github.com:` rewrites plain SSH remotes to HTTPS, bypassing identity routing. Nothing pushed; no config touched. Lesson: on lp, any git push must be done at the console (approve 1Password prompt) or after `gh auth refresh -h github.com -u UC-VR`; don't attempt headless.
 - Lesson: "LOCKED" empty dirs on Windows are often a cwd of a live `claude --resume` session — check `.claude\journal` presence before treating as junk.
+
+## 2026-10-13
+- Supersedes the 2026-09-10 line "scouts cannot write files": since 1.8.7 scout can Write `*_briefing.md` (or `briefing.md`) only, enforced by hooks/scout-write-gate.py; Edit is still denied and Bash stays read-only (no `env`/`printenv`). Scout has no network: have a `worker` fetch remote content to disk first.
+- Scout now runs on Haiku 5.5 (`model: haiku`); the 2026-09 note "scout same tier as worker (haiku banned)" is superseded. Haiku is allowlisted only for scout/Explore/claude-code-guide/statusline-setup by the model-tier gate.

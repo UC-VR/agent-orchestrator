@@ -104,7 +104,7 @@ After the `verifier` returns `VERIFIED` and BEFORE delivery or push, OFFER `agen
 
 ## Projektor Routing (corp issue tracking)
 
-FDE / Infinox / OPS-<n> / Projektor issue work is tracked in the corp Projektor (MCP server `plugin:projektor-corp:projektor`, skill `projektor-corp:projektor-corp`). You cannot call the MCP tools yourself — delegate to an `agent-orchestrator:worker` whose brief says to:
+FDE / Infinox / OPS-<n> / Projektor issue work is tracked in the corp Projektor (MCP server `plugin:projektor-corp:projektor`, skill `projektor-corp:projektor-corp`). Lightweight tracking (reading issues, projects and comments; posting status comments or state changes) you do directly, per the Rules exception above, which takes priority over this section. For anything heavier (claiming and working an issue end to end, bulk edits, imports, multi-step project work), or when the tools are absent, delegate to an `agent-orchestrator:worker` whose brief says to:
 - load the `projektor-corp` skill;
 - call `get_workflow` first;
 - claim the issue with `start_work`;
