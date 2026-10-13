@@ -245,22 +245,59 @@ def check_chezmoi(tokens):
 
 
 def check_env(tokens):
-    """env with no wrapped command (bare, flags, VAR=val only) is fine; env
-    used to launch another program must itself resolve to an allow-listed
-    verb, closing the `env <mutating cmd>` bypass."""
-    for t in tokens[1:]:
+    """env with no wrapped command (bare, flags, VAR=val only) is fine; env used
+    to launch another program recurses into the full segment check on the wrapped
+    command (so `env sed -i ...` is judged exactly like `sed -i ...`). env's own
+    flags and VAR=val assignments are skipped; -u/-C/-a (and long forms) take a
+    value, which must not be mistaken for the wrapped command."""
+    i = 1
+    while i < len(tokens):
+        t = tokens[i]
         if _ENV_SPLIT_RE.match(t):
             return "scout is read-only; env -S/--split-string executes its argument"
-        if t.startswith("-"):
-            continue
-        if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', t):
-            continue
-        wrapped = normalize_cmd_token(t)
-        if wrapped not in ALLOWLIST:
-            return "scout is read-only; env-wrapped '%s' not in allowlist" % t
-        break
+        if t.startswith("--"):
+            name = t[2:].split("=", 1)[0]
+            if "=" not in t and name and any(
+                    l.startswith(name) for l in ("unset", "chdir", "argv0")):
+                i += 1   # value is the next token
+        elif t.startswith("-") and len(t) > 1:
+            for pos, ch in enumerate(t[1:], 1):
+                if ch in "uCa":
+                    if pos == len(t) - 1:
+                        i += 1   # value is the next token
+                    break        # else attached value (-uFOO)
+        elif re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', t):
+            pass
+        else:
+            return check_tokens(tokens[i:])
+        i += 1
     return None
 
+def check_uniq(tokens):
+    """`uniq [OPTION] [INPUT [OUTPUT]]`: a second positional is an output file."""
+    positionals = 0
+    skip = False
+    for t in tokens[1:]:
+        if skip:
+            skip = False
+            continue
+        if t.startswith("<"):
+            skip = t == "<"   # stdin redirection: `< f` is not an operand
+        elif t.startswith("--"):
+            name = t[2:].split("=", 1)[0]
+            if "=" not in t and name and any(
+                    l.startswith(name) for l in ("skip-fields", "skip-chars", "check-chars")):
+                skip = True
+        elif t.startswith("-") and len(t) > 1:
+            for pos, ch in enumerate(t[1:], 1):
+                if ch in "fsw":
+                    skip = pos == len(t) - 1
+                    break
+        else:
+            positionals += 1
+    if positionals > 1:
+        return "scout is read-only; uniq with an output file operand is not permitted"
+    return None
 
 def check_awk(tokens):
     args = tokens[1:]
@@ -269,11 +306,12 @@ def check_awk(tokens):
     for t in args:
         if t.startswith("--"):
             name = t[2:].split("=", 1)[0]
-            if name and any(l.startswith(name) for l in ("include", "load", "file", "exec")):
+            if name and any(l.startswith(name) for l in (
+                    "include", "load", "file", "exec", "profile", "dump-variables", "pretty-print")):
                 return "scout is read-only; awk %s is not permitted" % t
         elif t.startswith("-"):
-            if t[1:2] in ("i", "l", "f", "E"):
-                return "scout is read-only; awk %s (include/load/-f/exec) is not permitted" % t
+            if t[1:2] in ("i", "l", "f", "E", "o", "p", "d"):
+                return "scout is read-only; awk %s (include/load/-f/exec/-o/-p/-d) is not permitted" % t
         elif "|" in t and ("getline" in t or "print" in t):
             # quote-aware splitting keeps `print | "cmd"` / `"cmd" | getline`
             # inside one token; they spawn processes. (`-F '|'` stays allowed.)
@@ -302,6 +340,9 @@ def check_segment(segment):
         tokens = shlex.split(seg, posix=True)
     except ValueError:
         return "scout is read-only; unparseable quoting in command"
+    return check_tokens(tokens)
+
+def check_tokens(tokens):
     if not tokens:
         return None
     first_raw = tokens[0]
@@ -328,6 +369,8 @@ def check_segment(segment):
         return check_jq_yq(first, tokens)
     if first == "env":
         return check_env(tokens)
+    if first == "uniq":
+        return check_uniq(tokens)
     return None
 
 class _Reject(Exception):

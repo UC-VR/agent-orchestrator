@@ -202,5 +202,53 @@ class TestNameStrip(unittest.TestCase):
             "model: sonnet or opus — omitting it inherits the caller's model and can "
             "leak fable/haiku onto delegated work."}})
 
+class TestIsolationStrip(unittest.TestCase):
+    TI = {"subagent_type": "agent-orchestrator:worker", "prompt": "p", "isolation": "worktree"}
+
+    def _spawn_in(self, ti, cwd, **kw):
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent",
+                   "tool_input": ti, "cwd": cwd}
+        return run_raw(json.dumps(payload), kw.get("env_extra"))[0]
+
+    def test_non_git_cwd_strips_isolation(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            o = out(self._spawn_in(self.TI, d))
+            self.assertEqual(o["permissionDecision"], "allow")
+            self.assertEqual(o["updatedInput"], {"subagent_type": "agent-orchestrator:worker", "prompt": "p"})
+            self.assertIn("isolation", o["additionalContext"])
+
+    def test_git_cwd_keeps_isolation(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["git", "init", "-q", d], check=True)
+            self.assertEqual(self._spawn_in(self.TI, d), {})
+
+    def test_other_isolation_value_untouched(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            ti = dict(self.TI, isolation="remote")
+            self.assertEqual(self._spawn_in(ti, d), {})
+
+    def test_haiku_beats_isolation_strip(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            res = self._spawn_in(dict(self.TI, model="haiku"), d)
+            self.assertTrue(is_deny(res))
+            self.assertNotIn("updatedInput", out(res))
+
+    def test_unpinned_no_model_beats_isolation_strip(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertTrue(is_deny(self._spawn_in({"subagent_type": "general-purpose", "isolation": "worktree"}, d)))
+
+    def test_isolation_and_name_stripped_together(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            o = out(self._spawn_in(dict(self.TI, name="w1"), d, env_extra=V_NEW))
+            self.assertEqual(o["updatedInput"], {"subagent_type": "agent-orchestrator:worker", "prompt": "p"})
+            self.assertIn("`name` was removed", o["additionalContext"])
+            self.assertIn("`isolation` was removed", o["additionalContext"])
+
 if __name__ == "__main__":
     unittest.main()

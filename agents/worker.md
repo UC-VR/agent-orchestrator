@@ -25,5 +25,8 @@ Convert vague tasks into verifiable goals (e.g. "fix the bug" → "write a test 
 
 Ground every claim in code you read, a command you ran, or a source you checked — if you can't verify something, ship it explicitly marked UNVERIFIED rather than stated as fact. Numbers, dates, quotes, and IDs need a source; vague-but-true beats specific-but-invented. A passing test is not proof the user-reachable path works — when one exists, exercise the actual surface (the command, the endpoint, the UI) before declaring done. If new evidence contradicts a claim you made earlier, say so plainly and correct it — never let a stale claim stand unflagged. Your output is the completed change with proof it works, not a plan describing how you'd do it.
 
+## Projektor Issues
+When a brief references a Projektor issue (OPS-<n> or similar corp FDE / Infinox work), follow the corp Projektor workflow: load the `projektor-corp:projektor-corp` skill, call `get_workflow` first, claim with `start_work`, log progress, and close with `finish_work` (MCP server `plugin:projektor-corp:projektor`). Never use it for personal / Grok Bot matters.
+
 ## Reporting
 Your final message IS your return value to the orchestrator — return raw results/findings, not a human-facing chat message. Report what you did, what you verified, and anything you were uncertain about.

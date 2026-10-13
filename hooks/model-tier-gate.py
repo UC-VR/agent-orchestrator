@@ -8,6 +8,9 @@ STRIP_NOTE = ("Agent spawn: `name` was removed (agent teams are disabled by flee
               "named spawns would run as in-process teammates with clamped tools). Track this "
               "agent by the ID in the tool result and use SendMessage with that ID for follow-ups.")
 
+ISOLATION_NOTE = ("Agent spawn: `isolation` was removed (cwd is not a git repo, so a worktree "
+                  "cannot be created). The agent runs in the shared cwd.")
+
 UNPINNED = {"general-purpose", "explore", "plan", "claude", "claude-code-guide"}
 FORBIDDEN = ("haiku", "fable")
 
@@ -59,6 +62,16 @@ def cli_version():
     except Exception:
         return None
 
+def in_git_work_tree(cwd):
+    """True iff cwd is inside a git work tree. Returns None (unknown) on any error
+    (git missing, timeout) so the caller leaves `isolation` untouched."""
+    try:
+        r = subprocess.run(["git", "-C", cwd, "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, text=True, timeout=3)
+        return r.returncode == 0 and r.stdout.strip() == "true"
+    except Exception:
+        return None
+
 def main():
     data = json.loads(sys.stdin.read())          # malformed -> except -> allow
     if data.get("tool_name") not in ("Agent", "Task"):
@@ -83,12 +96,14 @@ def main():
     # definition is dropped and the spawn collapses to a fixed reduced tool profile.
     name = ti.get("name")
     stripped = False
+    notes = []
     if name and isinstance(name, str) and name.strip() and os.environ.get("ORCHESTRATOR_ALLOW_NAMED_SPAWNS") != "1":
         ver = cli_version()
         if ver is not None and ver >= MIN_STRIP_VERSION:
             # Strip teammate-only fields via updatedInput; remaining rules run on the stripped input.
             ti = {k: v for k, v in ti.items() if k not in TEAMMATE_ONLY_KEYS}
             stripped = True
+            notes.append(STRIP_NOTE)
         else:
             deny("Named spawns are blocked: Claude Code's in-process teammate path "
                  "(anthropics/claude-code#81746/#78234) silently drops the agent "
@@ -96,6 +111,15 @@ def main():
                  "with SendMessage for follow-ups. Override: "
                  "ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1. "
                  "(strip unavailable: CLI < 2.1.290 or version unknown)")
+
+    # Rule 0a: some main-thread models pass isolation:"worktree" on every spawn; outside a
+    # git repo that makes the spawn fail. Strip it there (inside a repo it is untouched).
+    if ti.get("isolation") == "worktree":
+        cwd = data.get("cwd")
+        if in_git_work_tree(cwd if isinstance(cwd, str) and cwd else os.getcwd()) is False:
+            ti = {k: v for k, v in ti.items() if k != "isolation"}
+            stripped = True
+            notes.append(ISOLATION_NOTE)
 
     # Rule 0b: forks inherit the main model and ignore any `model` override.
     if bare == "fork" and os.environ.get("ORCHESTRATOR_ALLOW_FORK") != "1":
@@ -119,7 +143,7 @@ def main():
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
             "updatedInput": ti,
-            "additionalContext": STRIP_NOTE}}))
+            "additionalContext": " ".join(notes)}}))
     sys.exit(0)
 
 if __name__ == "__main__":
