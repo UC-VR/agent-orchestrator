@@ -1,5 +1,5 @@
 {
-  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: briefing files only, no secret values; Read|Grep: no secret paths) and security-reviewer default-deny gate (Bash allowlist; Read|Grep: no secret paths). Per-hook rationale lives in each script's header comment.",
+  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: briefing files only, no secret values; Read|Grep: no secret paths) security-reviewer default-deny gate (Bash allowlist; Read|Grep: no secret paths) and loop-guard (all tools: blocks tight status-polling / TaskStop churn, warns then blocks subagents past ~150 tool calls or 4h). Per-hook rationale lives in each script's header comment.",
   "hooks": {
     "PostToolUse": [
       {
@@ -72,6 +72,16 @@
             "type": "command",
             "shell": "bash",
             "command": "command -v python3 >/dev/null 2>&1 && python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/security-reviewer-gate.py\" || python \"${CLAUDE_PLUGIN_ROOT}/hooks/security-reviewer-gate.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "command -v python3 >/dev/null 2>&1 && python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/loop-guard.py\" || python \"${CLAUDE_PLUGIN_ROOT}/hooks/loop-guard.py\""
           }
         ]
       }

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # PreToolUse gate: enforce model-tier policy on Agent/Task spawns. FAIL-OPEN on any error.
 # Policy: subagents run sonnet or opus. fable is banned everywhere (orchestrator main thread only).
+# Model values are matched by SUBSTRING on the lowercased string, so 9router pool ids work the same
+# as aliases: "pool-fable"/"pool-fable-high" contain "fable" (denied), "pool-haiku" contains "haiku"
+# (allowlisted types only), "pool-opus*"/"pool-sonnet*" pass. The Agent tool's `model` param is an
+# enum (sonnet|opus|haiku|fable), so pool ids normally arrive via agent frontmatter, not here.
 # Haiku 5.5 ("haiku", "pool-haiku", "claude-haiku-5-5") is allowed ONLY for the bare agent types in
 # HAIKU_OK (cheap enumeration/lookup work); never for verifier, judge, security-reviewer, workers or
 # any code-editing type. Haiku 4.x / 3.x ids are denied for every type. Precedence: fork deny,
@@ -22,8 +26,11 @@ FORBIDDEN = ("fable",)
 # Bare lowercase subagent_type values (after prefix strip) that may run Haiku 5.5.
 HAIKU_OK = {"scout", "explore", "claude-code-guide", "statusline-setup"}
 # Never Haiku, even if someone later adds them to HAIKU_OK (enforced below).
-HAIKU_NEVER = {"verifier", "judge", "security-reviewer"}
+HAIKU_NEVER = {"verifier", "final-verifier", "judge", "security-reviewer"}
 HAIKU_OK -= HAIKU_NEVER
+# Pinned fleet types (orchestrator, worker, verifier, final-verifier, judge, scout, security-reviewer)
+# carry a pool id in their frontmatter, so they are simply absent from UNPINNED: with no explicit model
+# they resolve to that pin (Rule 3/default allow). There is no separate pinned list to maintain.
 # Haiku 4.x / 3.x model-id substrings: always denied.
 HAIKU_OLD = ("haiku-4", "3-5-haiku", "3-haiku", "claude-haiku-4")
 
@@ -142,7 +149,7 @@ def main():
     # Rule 1: explicit forbidden model tier (fable)
     if model_s and any(f in model_s for f in FORBIDDEN):
         deny("Blocked by model-tier policy: fable is reserved for the orchestrator "
-             "main thread and is never used for subagents. Re-spawn with model: sonnet or opus.")
+             "main thread and is never used for subagents. Re-spawn with model: sonnet or opus (or a pool-sonnet*/pool-opus* pool id).")
     # Rule 1b: Haiku is allowlisted by agent type, and only the 5.x line
     if "haiku" in model_s:
         if any(o in model_s for o in HAIKU_OLD):

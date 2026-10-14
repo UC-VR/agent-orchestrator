@@ -40,16 +40,16 @@ agent_type_lc="$(printf '%s' "$agent_type" | tr '[:upper:]' '[:lower:]')"
 # "namespace:" prefix so the comparison below matches the bare role name.
 agent_type_bare="${agent_type_lc##*:}"
 
-# Loop-guard: spawning verifier/judge/scout/security-reviewer -> no reminder (all
+# Loop-guard: spawning verifier/final-verifier/judge/scout/security-reviewer -> no reminder (all
 # are read-only checking/advisory roles; nagging them to "go verify" recreates
 # the verify-the-verifier loop).
-if [ "$agent_type_bare" = "verifier" ] || [ "$agent_type_bare" = "judge" ] || [ "$agent_type_bare" = "scout" ] || [ "$agent_type_bare" = "security-reviewer" ]; then
+if [ "$agent_type_bare" = "verifier" ] || [ "$agent_type_bare" = "final-verifier" ] || [ "$agent_type_bare" = "judge" ] || [ "$agent_type_bare" = "scout" ] || [ "$agent_type_bare" = "security-reviewer" ]; then
   printf '%s\n' '{}'
   exit 0
 fi
 
 # Otherwise, inject the soft reminder (two gates: mechanical -> verifier, decision-shaped -> judge then verifier).
-reminder='Reminder (soft, non-blocking): a producer subagent was just spawned. State the gate before delivering. Mechanical output (code, config, refactors): spawn the verifier subagent to adversarially check it, bounded 1-2 retries. Decision-shaped output (design, plan, approach, wording, prompt) or any report containing 2+ options with a recommendation: rank with the judge subagent first, then verify the winner. Skip both for trivial or read-only work.'
+reminder='Reminder (soft, non-blocking): a producer subagent was just spawned. State the gate before delivering. Mechanical output (code, config, refactors): spawn the verifier subagent to adversarially check it, bounded 1-2 retries, then the final-verifier subagent for the last pass before delivery. Decision-shaped output (design, plan, approach, wording, prompt) or any report containing 2+ options with a recommendation: rank with the judge subagent first, then verify the winner. Skip both for trivial or read-only work.'
 
 # Emit valid JSON. Build it without jq; the reminder text contains no double quotes
 # or backslashes, so direct interpolation is safe here.

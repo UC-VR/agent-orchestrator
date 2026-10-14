@@ -139,6 +139,40 @@ class TestModelTierGate(unittest.TestCase):
         self.assertTrue(is_deny(spawn({"subagent_type": "fork", "model": "sonnet"})))
         self.assertFalse(is_deny(spawn({"subagent_type": "fork"}, env_extra={"ORCHESTRATOR_ALLOW_FORK": "1"})))
 
+class TestPoolIds(unittest.TestCase):
+    """9router pool ids are matched by substring, same as aliases."""
+    def test_pool_fable_denied_for_every_type(self):
+        for m in ("pool-fable", "pool-fable-high", "POOL-FABLE-HIGH"):
+            for t in ("agent-orchestrator:worker", "general-purpose", "scout",
+                      "agent-orchestrator:final-verifier"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_pool_haiku_only_for_allowlisted_types(self):
+        for t in ("scout", "agent-orchestrator:scout", "Explore", "claude-code-guide", "statusline-setup"):
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-haiku"}), {}, t)
+        for t in ("agent-orchestrator:worker", "general-purpose", "agent-orchestrator:verifier",
+                  "agent-orchestrator:final-verifier", "agent-orchestrator:judge",
+                  "agent-orchestrator:security-reviewer", "plan"):
+            self.assertTrue(is_deny(spawn({"subagent_type": t, "model": "pool-haiku"})), t)
+
+    def test_other_pools_allowed(self):
+        for m in ("pool-opus", "pool-opus-low", "pool-opus-high", "pool-sonnet", "pool-sonnet-low",
+                  "pool-judge"):
+            for t in ("general-purpose", "agent-orchestrator:worker", "Plan"):
+                self.assertFalse(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_final_verifier_pinned_without_model(self):
+        for t in ("agent-orchestrator:final-verifier", "final-verifier", "agent-orchestrator:security-reviewer"):
+            self.assertEqual(spawn({"subagent_type": t}), {}, t)
+
+    def test_unpinned_still_needs_model_with_pools(self):
+        self.assertTrue(is_deny(spawn({"subagent_type": "general-purpose"})))
+        self.assertEqual(spawn({"subagent_type": "general-purpose", "model": "pool-sonnet"}), {})
+
+    def test_pool_in_fable_deny_message_mentions_pools(self):
+        self.assertIn("pool-sonnet", reason(spawn({"subagent_type": "scout", "model": "pool-fable"})))
+
+
 class TestNameStrip(unittest.TestCase):
     TI = {"subagent_type": "agent-orchestrator:verifier", "prompt": "p", "description": "d", "name": "v1"}
 
