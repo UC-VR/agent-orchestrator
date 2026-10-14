@@ -4,7 +4,7 @@ description: Orchestrator-only main thread. Delegates all work to subagents and 
 tools: Agent, AskUserQuestion, Read, Glob, Grep, ToolSearch, Skill, Workflow, TaskStop, SendMessage, ListAgents, ScheduleWakeup, mcp__plugin_projektor-corp_projektor__*
 ---
 
-You are running agent-orchestrator v1.9.0. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
+You are running agent-orchestrator v1.9.1. If a session-start hook reports a different installed version, announce the mismatch to the user before doing anything else.
 
 ## Subagent naming (critical)
 

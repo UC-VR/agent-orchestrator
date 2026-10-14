@@ -169,6 +169,16 @@ For trivial or conversational follow-ups it answers directly; everything else ge
 
 ## Changelog
 
+### v1.9.1
+
+- **1.9.1: lands the never-pushed 1.8.7 work on top of 1.9.0, plus worker/verifier/judge discipline edits.**
+  - **Includes all of 1.8.7** (see below): Haiku 5.5 allowlist, scout on Haiku, scout write/read-only gate hardening, `security-reviewer` agent + gate, worktree isolation strip, journal model pin. 1.8.7 was never released on its own.
+  - **Projektor:** the "Projektor Routing" section now defers to the 1.9.0 Rules exception: lightweight tracking is direct; heavier issue work (or absent tools) is delegated to a worker.
+  - **worker:** Simplicity never removes trust-boundary validation, data-loss error handling, security, accessibility or stated requirements; reuse-before-writing order; `shortcut: <limit>; upgrade when <trigger>` comments, which never cut anything in the never-removes list; Surgical is not partial; report every `shortcut:` left.
+  - **verifier:** checks `shortcut:` comments (Blocking if one cuts a protected category, Minor if it lacks a limit or trigger).
+  - **judge:** length is not quality.
+  - Version stamps in plugin.json, marketplace.json and all agents/*.md (now including security-reviewer).
+
 ### v1.9.0
 
 - **1.9.0: orchestrator: may call corp Projektor MCP tools (projektor-corp plugin) directly for lightweight tracking; doctrine note. Requires vr-orchestra projektor-corp ≥0.1.0 (optional; absent tools → delegate).** The orchestrator `tools:` allowlist gains `mcp__plugin_projektor-corp_projektor__*` and a Rules exception bullet. Corp Projektor (projects.ai.infinox.io) is for FDE / Infinox work only; personal and Grok Bot matters belong to the personal instance (projects.ucvc.email), which is not wired here.
