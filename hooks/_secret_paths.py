@@ -15,7 +15,7 @@ SECRET_BASENAMES = {
     "id_ed25519", "token", "token.json", "secrets.json", "secrets.yaml", "secrets.yml",
 }
 # path fragments (matched on "/" + lowercased path) whose whole subtree is secret
-SECRET_DIRS = ("/.config/op", "/.op", "/.config/gh", "/.docker/config.json", "/.aws",
+SECRET_DIRS = ("/.git/config", "/.git/credentials", "/.config/op", "/.op", "/.config/gh", "/.docker/config.json", "/.aws",
                "/.kube/config", "/.gnupg", "/.ssh/id_", "/.password-store",
                "/.config/gcloud", "/.azure")
 _GLOB_CHARS = re.compile(r'[*?\[]')
@@ -68,6 +68,36 @@ def _glob_secret(c):
                    for ds, ps in zip(dsegs, window)) and any(_GLOB_CHARS.search(w) for w in window):
                 return True
     return False
+
+
+# Flags that make an otherwise "names-only" command read a FILE and echo its lines
+# (often in error output): date -f, file -f, wc/du/sort --files0-from, tree --fromfile,
+# find -files0-from, hostname -F. Both gates deny these outright (1.9.1, verifier NB2).
+_INDIRECT = {
+    "date": re.compile(r'^(-[A-Za-z]*f|--file(=|$))'),
+    "file": re.compile(r'^(-[A-Za-z]*f|--files-from(=|$)|-m|--magic-file)'),
+    "wc": re.compile(r'^--files0-from'),
+    "du": re.compile(r'^(--files0-from|-X|--exclude-from)'),
+    "sort": re.compile(r'^--files0-from|^--f(i(l(e(s(0(-(f(r(om?)?)?)?)?)?)?)?)?)?=?$'),
+    "tree": re.compile(r'^--fromfile'),
+    "find": re.compile(r'^-files0-from'),
+    "hostname": re.compile(r'^(-[A-Za-z]*F|--file(=|$))'),
+    "md5sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
+    "sha256sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
+    "sha1sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
+    "shasum": re.compile(r'^(-[A-Za-z]*c|--check)'),
+}
+
+
+def indirect_file_read(cmd, args):
+    """Reason string if `cmd args` reads a file through a list/format-file flag."""
+    rx = _INDIRECT.get(cmd)
+    if rx is None:
+        return None
+    for a in args:
+        if a.startswith("-") and rx.match(a):
+            return "`%s %s` reads a file and can echo its contents" % (cmd, a)
+    return None
 
 
 def is_secret_path(arg):

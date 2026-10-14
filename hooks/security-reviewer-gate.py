@@ -37,10 +37,8 @@ WRAPPERS = {
     "stdbuf": ({"-i", "-o", "-e"}, 0),
     "time": (set(), 0),
     "command": (set(), 0),
-    "xargs": ({"-I", "-d", "-n", "-P", "-L", "-E", "-s", "-a", "--arg-file", "--delimiter",
-               "--max-args", "--max-procs", "--max-lines", "--eof", "--max-chars"}, 0),
 }
-CONTENT_READERS = {"cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "sort", "uniq",
+CONTENT_READERS = {"md5sum", "sha256sum", "sha1sum", "shasum", "cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "sort", "uniq",
                    "cut", "tr", "jq", "diff", "cmp", "comm", "column", "nl", "fold", "paste",
                    "strings"}
 PATTERN_FIRST = {"grep", "egrep", "fgrep", "rg", "jq"}
@@ -62,7 +60,7 @@ _ENV_ASSIGN_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 
 try:  # shared helper; if missing, every reviewer call is denied (fail-closed)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from _secret_paths import is_secret_path
+    from _secret_paths import is_secret_path, indirect_file_read
 except Exception:  # pragma: no cover
     is_secret_path = None
 
@@ -204,8 +202,8 @@ def check_git(args):
             return "`git branch <name>` creates a branch"
     if verb == "remote":
         sub = next((a for a in rest if not a.startswith("-")), None)
-        if sub not in (None, "get-url") and not (sub == "show" and "-n" in rest):
-            return "`git remote %s` mutates config or contacts the network" % sub
+        if sub is not None or any(a.startswith("-") for a in rest):
+            return "only bare `git remote` is allowed (-v/get-url/show print token-bearing URLs; other verbs mutate or hit the network)"
     if verb == "tag" and any(not a.startswith("-") for a in rest) and not any(
             a in ("-l", "--list") for a in rest):
         return "`git tag <name>` creates a tag"
@@ -255,17 +253,18 @@ def check_tokens(tokens, depth=0):
         if not inner:
             if cmd == "env":
                 return "bare `env` prints environment values"
-            if cmd == "xargs":
-                return None   # default command is echo
             return None
         return check_tokens(inner, depth + 1)
     if cmd not in ALLOWED:
         return "`%s` is not on the security-reviewer allowlist (default-deny)" % cmd
     dashless = [a for a in args if not a.startswith("-")]
     if cmd in ("export", "declare", "typeset", "readonly"):
-        if not dashless or any(a in ("-p", "-x", "-xp", "-px") for a in args):
+        if not dashless or any(a.startswith("-") and ("p" in a or "x" in a and not dashless) for a in args):
             return "`%s` listing prints environment values" % cmd
         return None
+    reason = indirect_file_read(cmd, args)
+    if reason:
+        return reason
     if cmd == "git":
         return check_git(args)
     if cmd == "find":
