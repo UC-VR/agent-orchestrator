@@ -24,14 +24,28 @@ import re
 import shlex
 import sys
 import json
+import os
+
+try:  # shared secret-path helpers (1.9.1); missing -> scout is denied (fail-closed)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _secret_paths import is_secret_path
+except Exception:  # pragma: no cover
+    is_secret_path = None
 
 # --- allowlists -------------------------------------------------------------
 # `env` and `printenv` are deliberately NOT allow-listed (1.8.7): they dump the process
 # environment (secrets). With env gone, no wrapper command re-enters check_tokens.
+# 1.9.1 (B1): scout must not read the environment or secret files by any route:
+# /proc/*/environ (any spelling or glob), jq/yq env/$ENV/strenv/envsubst, awk ENVIRON/
+# PROCINFO, `less` (LESSOPEN/+! escapes) and chezmoi verbs that render templates
+# (cat/diff/status/dump/data/verify run `output`/onepassword* template functions) are
+# denied, and every file operand of a content-reading command is checked against the
+# shared secret-path list (.env*, keys, ~/.config/op, gh hosts.yml, docker config, .netrc,
+# .git-credentials, ~/.aws ...), including glob spellings like `.en[v]`.
 
 ALLOWLIST = {
     "git", "chezmoi", "wc", "du", "stat", "ls", "find", "cat", "head", "tail",
-    "less", "grep", "rg", "jq", "yq", "sort", "uniq", "cut", "awk", "tr",
+    "grep", "rg", "jq", "yq", "sort", "uniq", "cut", "awk", "tr",
     "echo", "printf", "pwd", "whoami", "hostname", "date",
     "which", "where", "type", "file", "readlink", "realpath", "basename",
     "dirname", "tree", "diff", "cmp", "md5sum", "sha256sum", "shasum",
@@ -59,11 +73,21 @@ GIT_DENY = {
     "rebase", "merge", "stash", "clean", "rm", "mv", "tag", "apply",
     "cherry-pick", "restore", "worktree", "config",
 }
+# Commands whose file operands are READ and whose content could reach scout's output.
+CONTENT_READERS = {
+    "cat", "head", "tail", "grep", "rg", "jq", "yq", "sort", "uniq", "cut", "awk", "tr",
+    "diff", "cmp", "column", "nl", "fold", "paste", "sed",
+}
+# readers whose first positional is a pattern/program, not a file
+SCRIPT_FIRST = {"grep", "rg", "jq", "yq", "awk", "sed"}
+_PROC_ENV_RAW_RE = re.compile(r'/proc/\S*(environ|[*?\[])')
+_JQ_ENV_RE = re.compile(r'\$ENV\b|\$__loc__|(^|[^A-Za-z0-9_.$])(env|strenv|envsubst|getenv)\b')
+_AWK_ENV_RE = re.compile(r'\b(ENVIRON|PROCINFO)\b')
 
 CHEZMOI_ALLOW = {
-    "doctor", "diff", "status", "managed", "unmanaged", "data", "source-path",
-    "target-path", "verify", "cat", "dump",
-}  # execute-template deliberately absent: template funcs (`output`) run commands
+    "doctor", "managed", "unmanaged", "source-path", "target-path",
+}  # every verb that renders templates (cat/diff/status/dump/data/verify/execute-template)
+#    is absent: template funcs (`output`, onepassword*) run commands and read secrets
 CHEZMOI_DENY = {
     "apply", "add", "init", "update", "edit", "forget", "remove", "purge",
     "re-add", "merge",
@@ -186,6 +210,8 @@ def check_git_remote(args):
     verb = next((a for a in args if not a.startswith("-")), None)
     if verb is not None and verb not in ("show", "get-url"):
         return "scout is read-only; git remote %s is not permitted" % verb
+    if verb == "show" and "-n" not in args:
+        return "scout is local-only; `git remote show` contacts the remote (use -n)"
     for a in args:
         if a.startswith("-") and a not in GIT_REMOTE_ALLOW:
             return "scout is read-only; git remote %s is not permitted" % a
@@ -273,6 +299,8 @@ def check_uniq(tokens):
 
 def check_awk(tokens):
     args = tokens[1:]
+    if _AWK_ENV_RE.search(" ".join(args)):
+        return "scout may not read the environment; awk ENVIRON/PROCINFO is not permitted"
     if _AWK_SYSTEM_RE.search(" ".join(args)):
         return "scout is read-only; awk system()/@load/@include is not permitted"
     for t in args:
@@ -292,6 +320,10 @@ def check_awk(tokens):
 
 def check_jq_yq(first, tokens):
     for t in tokens[1:]:
+        if not t.startswith("-") and _JQ_ENV_RE.search(t):
+            return "scout may not read the environment; jq/yq env/$ENV/strenv/envsubst is not permitted"
+        if t in ("--rawfile", "--slurpfile", "--args", "--jsonargs") or t.startswith(("--rawfile=", "--slurpfile=")):
+            pass  # file operands are covered by the secret-path check
         if t.startswith("--"):
             name = t[2:].split("=", 1)[0]
             if len(name) >= 2 and ("in-place".startswith(name) or "inplace".startswith(name)):
@@ -314,6 +346,47 @@ def check_segment(segment):
         return "scout is read-only; unparseable quoting in command"
     return check_tokens(tokens)
 
+def file_operands(first, tokens):
+    """Positional operands that are read as files (approximate, errs toward checking
+    more). For pattern-first commands the first positional is skipped unless the
+    pattern came from -e/--regexp/-f."""
+    out, skip_first, take = [], first in SCRIPT_FIRST, False
+    for t in tokens[1:]:
+        if take:
+            take = False
+            continue
+        if t in ("-e", "--regexp", "-f", "--file", "--from-file") and first in ("grep", "rg", "sed", "awk"):
+            skip_first = False
+            if t in ("-f", "--file", "--from-file"):
+                out.append("<pattern-file>")
+            take = t in ("-e", "--regexp")
+            continue
+        if t.startswith("-") and "=" in t:
+            out.append(t.split("=", 1)[1])
+            continue
+        if t.startswith("-"):
+            continue
+        if skip_first:
+            skip_first = False
+            continue
+        out.append(t)
+    return out
+
+
+def check_secret_operands(first, tokens):
+    if first == "git":
+        rest = [t for t in tokens[1:] if not t.startswith("-")]
+        cands = rest[1:]
+    elif first in CONTENT_READERS:
+        cands = file_operands(first, tokens)
+    else:
+        return None
+    for c in cands:
+        if c != "<pattern-file>" and is_secret_path(c):
+            return "scout may not read secret-bearing files ('%s')" % c
+    return None
+
+
 def check_tokens(tokens):
     if not tokens:
         return None
@@ -321,6 +394,11 @@ def check_tokens(tokens):
     first = normalize_cmd_token(first_raw)
     if first not in ALLOWLIST:
         return "scout is read-only; '%s' not in allowlist" % first_raw
+    if is_secret_path is None:
+        return "scout gate cannot load its secret-path helper (fail-closed)"
+    reason = check_secret_operands(first, tokens)
+    if reason:
+        return reason
     if first == "git":
         return check_git(tokens)
     if first == "chezmoi":
@@ -401,6 +479,8 @@ def split_segments(command):
 
 def evaluate(command):
     # Raw-string checks first: these must see the command before any unquoting.
+    if _PROC_ENV_RAW_RE.search(command) or "/proc/" in command and re.search(r'/proc/[^\s]*[*?\[]', command):
+        return "scout may not read the environment (/proc/*/environ)"
     if _PROC_SUBST_RE.search(command):
         return "scout is read-only; process substitution (<()/>()) is not permitted"
     if has_bad_redirection(command):

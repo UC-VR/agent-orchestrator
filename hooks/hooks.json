@@ -1,5 +1,5 @@
 {
-  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: briefing files only) and security-reviewer secret-exposure gate (Bash). Per-hook rationale lives in each script's header comment.",
+  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: briefing files only, no secret values; Read|Grep: no secret paths) and security-reviewer default-deny gate (Bash allowlist; Read|Grep: no secret paths). Per-hook rationale lives in each script's header comment.",
   "hooks": {
     "PostToolUse": [
       {
@@ -56,7 +56,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Read|Grep",
         "hooks": [
           {
             "type": "command",
@@ -66,7 +66,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Read|Grep",
         "hooks": [
           {
             "type": "command",

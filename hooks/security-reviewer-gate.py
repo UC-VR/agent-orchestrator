@@ -5,39 +5,66 @@
 # (any internal error -> deny). Caller identification matches scout-readonly-gate.py:
 # truthy agent_id AND bare agent_type (after any "plugin:" prefix) == "security-reviewer".
 #
-# This is a DENYLIST guardrail, not a sandbox: it blocks the obvious exposure/mutation
-# commands and fails closed on constructs it cannot inspect ($-expansion, backticks,
-# process substitution, eval, shells without -c, inline interpreters). Known residuals:
-# glob spellings of secret files (`cat .en[v]`), and exotic readers not listed below.
+# Since 1.9.1 this is a DEFAULT-DENY ALLOWLIST (see ALLOWED), not a denylist: anything not
+# listed is refused, and it fails closed on constructs it cannot inspect ($-expansion,
+# backticks, process substitution, redirects). Known residuals: repo-config driven
+# git textconv/diff drivers, and secrets that sit inside ordinary-named files (`grep -r`
+# over a tree prints matching lines -- the agent prompt requires grep -l/-c for those).
 import json
 import os
 import re
 import shlex
 import sys
 
-OP_NAMES = {"op", "opix"}
-READER_ENV_CMDS = {"printenv"}                   # always prints values -> always denied
-MUTATORS = {
-    "rm", "mv", "cp", "tee", "dd", "chmod", "chown", "chgrp", "ln", "touch", "mkdir",
-    "rmdir", "truncate", "install", "shred", "unlink", "rsync", "patch",
+# 1.9.1 (B2): DEFAULT-DENY. Only the commands below may run; everything else (gh, curl,
+# wget, op, python/node/perl..., shells, sed/awk, sudo, docker ...) is denied. Secret-file
+# operands are checked against the shared hooks/_secret_paths.py list (.env*, keys,
+# ~/.config/op, gh hosts.yml, docker config.json, .netrc, .git-credentials, ~/.aws ...,
+# glob spellings included). Read/Grep tool calls by this agent get the same path check.
+ALLOWED = {
+    "git", "grep", "egrep", "fgrep", "rg", "ls", "stat", "file", "wc", "du", "find", "cat",
+    "head", "tail", "sort", "uniq", "cut", "tr", "jq", "echo", "printf", "test", "[", "true",
+    "false", "pwd", "realpath", "readlink", "basename", "dirname", "which", "type", "diff",
+    "cmp", "comm", "column", "nl", "fold", "paste", "tree", "md5sum", "sha256sum", "sha1sum",
+    "shasum", "date", "whoami", "hostname", "id", "uname", "strings", "systemctl", "ss",
+    "export", "declare", "typeset", "readonly",
 }
-GIT_DENY = {
-    "commit", "push", "reset", "checkout", "add", "rm", "mv", "merge", "rebase", "stash",
-    "clean", "switch", "restore", "tag", "pull", "fetch", "apply", "am", "cherry-pick",
-    "revert", "config", "worktree", "gc", "prune",
+# wrappers: (flags that take a value, number of leading positional args before the command)
+WRAPPERS = {
+    "env": ({"-u", "--unset", "-C", "--chdir"}, 0),
+    "timeout": ({"-s", "--signal", "-k", "--kill-after"}, 1),
+    "nice": ({"-n", "--adjustment"}, 0),
+    "stdbuf": ({"-i", "-o", "-e"}, 0),
+    "time": (set(), 0),
+    "command": (set(), 0),
+    "xargs": ({"-I", "-d", "-n", "-P", "-L", "-E", "-s", "-a", "--arg-file", "--delimiter",
+               "--max-args", "--max-procs", "--max-lines", "--eof", "--max-chars"}, 0),
 }
-GIT_BRANCH_MUTATING = re.compile(r'^-[a-zA-Z]*[dDmMcC]|^--(delete|move|copy|set-upstream)')
-WRAPPERS = {"env", "sudo", "doas", "command", "builtin", "nohup", "time", "nice", "ionice",
-            "exec", "xargs", "stdbuf", "timeout", "setsid", "watch"}
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
-INTERPRETERS = re.compile(r'^(python[0-9.]*|perl|ruby|node|nodejs|php|lua)$')
-GREP_FAMILY = {"grep", "egrep", "fgrep", "rg", "ag", "ack"}
-SAFE_META = {"ls", "stat", "file", "wc", "du", "test", "[", "realpath", "readlink",
-             "basename", "dirname", "find", "which", "type", "echo", "printf"}
+CONTENT_READERS = {"cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "sort", "uniq",
+                   "cut", "tr", "jq", "diff", "cmp", "comm", "column", "nl", "fold", "paste",
+                   "strings"}
+PATTERN_FIRST = {"grep", "egrep", "fgrep", "rg", "jq"}
+GIT_GLOBAL_OK = {"--no-pager", "--no-optional-locks", "--literal-pathspecs", "--bare"}
+GIT_GLOBAL_VALUE = {"-C", "--git-dir", "--work-tree"}
+GIT_READ = {"diff", "log", "show", "status", "blame", "grep", "ls-files", "ls-tree",
+            "cat-file", "rev-parse", "describe", "shortlog", "rev-list", "merge-base",
+            "branch", "remote", "tag", "name-rev", "check-ignore", "for-each-ref",
+            "count-objects", "whatchanged", "show-ref"}
+GIT_CONTENT = {"show", "diff", "blame", "log", "grep", "cat-file", "whatchanged"}
+_GIT_BAD_ARG = re.compile(r'^(--output(=|$)|--ext-diff$|-O|--open-files-in-pager|--exec|-c$|--config)')
+GIT_BRANCH_MUTATING = re.compile(r'^-[a-zA-Z]*[dDmMcCuf]|^--(delete|move|copy|set-upstream|unset-upstream|edit-description|force|track)')
+SYSTEMCTL_READ = {"status", "cat", "show", "list-units", "list-unit-files", "list-timers",
+                  "list-sockets", "is-enabled", "is-active", "is-failed", "list-dependencies"}
 _FIND_DENY = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
-_PROC_ENVIRON_RE = re.compile(r'/proc/[^\s\'"]*/environ')
+_PROC_ENVIRON_RE = re.compile(r'/proc/[^\s\'"]*(environ|[*?\[])')
+_JQ_ENV_RE = re.compile(r'\$ENV\b|\$__loc__|(^|[^A-Za-z0-9_.$])(env|getenv)\b')
 _ENV_ASSIGN_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
-_SAFE_ENV_SUFFIX = (".tpl", ".example", ".sample", ".template")
+
+try:  # shared helper; if missing, every reviewer call is denied (fail-closed)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _secret_paths import is_secret_path
+except Exception:  # pragma: no cover
+    is_secret_path = None
 
 
 def out(obj):
@@ -68,22 +95,6 @@ class Reject(Exception):
 def norm_cmd(tok):
     base = re.split(r'[\\/]', tok.strip())[-1].lower()
     return base[:-4] if base.endswith(".exe") else base
-
-
-def secret_name(arg):
-    """True if `arg` (a file operand) names a secret-bearing file."""
-    cands = {arg, arg.split("=", 1)[-1], arg.rsplit(":", 1)[-1]}
-    for c in cands:
-        b = os.path.basename(c.rstrip("/")).lower()
-        if not b:
-            continue
-        if b == ".env" or (b.startswith(".env") and not b.endswith(_SAFE_ENV_SUFFIX)):
-            return True
-        if b.endswith(".env") or "credentials" in b or b.endswith(".pem") or b.endswith(".key"):
-            return True
-        if re.match(r'^id_(rsa|dsa|ecdsa|ed25519)', b) and not b.endswith(".pub"):
-            return True
-    return False
 
 
 def split_command(command):
@@ -136,31 +147,96 @@ def split_command(command):
     return segs
 
 
-def check_args_for_secrets(cmd, args):
-    if cmd in SAFE_META:
-        return None
-    args = [a.lstrip("<") for a in args]
-    if cmd in GREP_FAMILY:
-        skipped, rest, take = False, [], False
-        for a in args:
-            if take:
-                take = False
-                continue
-            if a in ("-e", "--regexp"):
-                take, skipped = True, True
-                continue
-            if a.startswith("--regexp="):
-                skipped = True
-                continue
-            if not a.startswith("-") and not skipped:
-                skipped = True   # first positional is the search pattern
-                continue
-            rest.append(a)
-        args = rest
+def reader_operands(cmd, args):
+    out, skip_first, take = [], cmd in PATTERN_FIRST, False
     for a in args:
-        if secret_name(a):
-            return "'%s' looks like a secret-bearing file" % a
+        a = a.lstrip("<")
+        if not a:
+            continue
+        if take:
+            take = False
+            continue
+        if a in ("-e", "--regexp", "-f", "--file"):
+            skip_first = False
+            take = a in ("-e", "--regexp")
+            continue
+        if a.startswith("-"):
+            if "=" in a:
+                out.append(a.split("=", 1)[1])
+            continue
+        if skip_first:
+            skip_first = False
+            continue
+        out.append(a)
+    return out
+
+
+def secret_operand(cands):
+    for c in cands:
+        if is_secret_path(c):
+            return "'%s' looks like a secret-bearing file" % c
     return None
+
+
+def check_git(args):
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        a = args[i]
+        if a in GIT_GLOBAL_VALUE:
+            i += 2
+            continue
+        if a.split("=", 1)[0] in GIT_GLOBAL_VALUE or a in GIT_GLOBAL_OK:
+            i += 1
+            continue
+        return "git global option %s is not permitted (-c/--config-env/--exec-path/-p run code)" % a
+    verb = args[i].lower() if i < len(args) else ""
+    rest = args[i + 1:]
+    if verb not in GIT_READ:
+        return "`git %s` is not a read-only verb on the allowlist" % (verb or "<none>")
+    for a in rest:
+        if _GIT_BAD_ARG.match(a):
+            return "git %s writes a file or runs an external program" % a
+    if verb == "branch":
+        if any(GIT_BRANCH_MUTATING.match(a) for a in rest if a.startswith("-")):
+            return "`git branch` mutating form"
+        if any(not a.startswith("-") for a in rest) and not any(
+                a in ("-l", "--list", "--contains", "--merged", "--no-merged", "--points-at") for a in rest):
+            return "`git branch <name>` creates a branch"
+    if verb == "remote":
+        sub = next((a for a in rest if not a.startswith("-")), None)
+        if sub not in (None, "get-url") and not (sub == "show" and "-n" in rest):
+            return "`git remote %s` mutates config or contacts the network" % sub
+    if verb == "tag" and any(not a.startswith("-") for a in rest) and not any(
+            a in ("-l", "--list") for a in rest):
+        return "`git tag <name>` creates a tag"
+    if verb == "tag" and any(re.match(r'^-[a-zA-Z]*[dafsum]', a) or a.startswith(("--delete", "--force", "--sign", "--annotate")) for a in rest):
+        return "`git tag` mutating form"
+    if verb in GIT_CONTENT:
+        return secret_operand([a for a in rest if not a.startswith("-")] +
+                              [a.split("=", 1)[1] for a in rest if a.startswith("-") and "=" in a])
+    return None
+
+
+def strip_wrapper(cmd, args):
+    """Return the wrapped argv, [] if the wrapper runs nothing, or None if unparseable."""
+    value_flags, npos = WRAPPERS[cmd]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if cmd == "env" and _ENV_ASSIGN_RE.match(a):
+            i += 1
+            continue
+        if a == "--":
+            i += 1
+            break
+        if a.startswith("-"):
+            if cmd == "env" and (a in ("-S", "--split-string") or a.startswith(("-S", "--split-string"))):
+                return None
+            i += 2 if a in value_flags else 1
+            continue
+        break
+    i += npos
+    return args[i:]
 
 
 def check_tokens(tokens, depth=0):
@@ -172,65 +248,56 @@ def check_tokens(tokens, depth=0):
         return None
     cmd = norm_cmd(tokens[0])
     args = tokens[1:]
+    if cmd in WRAPPERS:
+        inner = strip_wrapper(cmd, args)
+        if inner is None:
+            return "`%s` form cannot be inspected" % cmd
+        if not inner:
+            if cmd == "env":
+                return "bare `env` prints environment values"
+            if cmd == "xargs":
+                return None   # default command is echo
+            return None
+        return check_tokens(inner, depth + 1)
+    if cmd not in ALLOWED:
+        return "`%s` is not on the security-reviewer allowlist (default-deny)" % cmd
     dashless = [a for a in args if not a.startswith("-")]
-
-    if cmd in OP_NAMES:
-        # global flags (`op --account x read ...`) can precede the verb, so match anywhere
-        words = set(dashless)
-        if words & {"read", "inject", "run"} or {"item", "get"} <= words or {"document", "get"} <= words:
-            return "`%s` read/inject/run/get verbs print or inject secret values" % cmd
-        return None
-    if cmd in READER_ENV_CMDS:
-        return "printenv prints environment values"
-    if cmd == "set" and not args:
-        return "bare `set` prints shell variables"
     if cmd in ("export", "declare", "typeset", "readonly"):
         if not dashless or any(a in ("-p", "-x", "-xp", "-px") for a in args):
             return "`%s` listing prints environment values" % cmd
         return None
-    if cmd == "env" and all(a.startswith("-") or _ENV_ASSIGN_RE.match(a) for a in args):
-        return "bare `env` prints environment values"
-    if cmd in ("eval", "source", "."):
-        return "%s executes uninspectable code" % cmd
-    if cmd in SHELLS:
-        for idx, a in enumerate(args):
-            if re.match(r'^-[A-Za-z]*c', a) and idx + 1 < len(args):
-                return check_command(args[idx + 1], depth + 1)
-        return "shell invocation without -c cannot be inspected"
-    if INTERPRETERS.match(cmd) and any(re.match(r'^-[A-Za-z]*[ceE]', a) or a == "-" for a in args):
-        return "inline interpreter code cannot be inspected"
-    if cmd in MUTATORS:
-        return "`%s` mutates files" % cmd
-    verb = ""
     if cmd == "git":
-        i = 0
-        while i < len(args) and args[i].startswith("-"):
-            i += 2 if args[i] in ("-C", "-c") else 1
-        verb = args[i].lower() if i < len(args) else ""
-        if verb in GIT_DENY:
-            return "`git %s` mutates the repository" % verb
-        if verb == "branch" and any(GIT_BRANCH_MUTATING.match(a) for a in args[i + 1:] if a.startswith("-")):
-            return "`git branch` mutating form"
-        if verb == "branch" and any(not a.startswith("-") for a in args[i + 1:]) and not any(
-                a in ("-l", "--list", "--contains", "--merged", "--no-merged") for a in args[i + 1:]):
-            return "`git branch <name>` creates a branch"
-    if cmd == "find" and any(a in _FIND_DENY for a in args):
-        return "find -delete/-exec/-ok/-fprint* mutates or executes"
-    if cmd == "sed" and any(re.match(r'^-[^-]*i|^--i', a) for a in args):
-        return "`sed -i` edits files in place"
-    if cmd in ("awk", "gawk") and "inplace" in args:
-        return "awk inplace edits files"
-    if cmd in WRAPPERS:
-        for i in range(1, len(tokens)):
-            reason = check_tokens(tokens[i:], depth + 1)
-            if reason:
-                return reason
-    if cmd == "git" and verb not in ("show", "diff", "blame", "log", "grep", "cat-file"):
-        return None   # ls-files/status/etc. list names only
-    return check_args_for_secrets(cmd, args)
+        return check_git(args)
+    if cmd == "find":
+        if any(a in _FIND_DENY for a in args):
+            return "find -delete/-exec/-ok/-fprint* mutates or executes"
+        return None
+    if cmd == "systemctl":
+        verb = next((a for a in args if not a.startswith("-")), None)
+        if verb not in SYSTEMCTL_READ:
+            return "`systemctl %s` is not a read-only verb" % verb
+        return None
+    if cmd == "ss" and any(a in ("-K", "--kill") or re.match(r'^-[a-zA-Z]*K', a) for a in args):
+        return "`ss -K` kills sockets"
+    if cmd == "sort" and any(re.match(r'^-[^-]*o', a) or a.startswith(("--output", "--compress")) for a in args):
+        return "sort -o/--output writes a file"
+    if cmd == "tree" and any(re.match(r'^-[^-]*o', a) or a.startswith("--output") for a in args):
+        return "tree -o writes a file"
+    if cmd == "uniq" and len([a for a in dashless]) > 1:
+        return "uniq with an output operand writes a file"
+    if cmd == "rg" and any(re.match(r'^--(pre|hostname-bin|search-zip)(=|$)|^-z', a) for a in args):
+        return "rg --pre/--search-zip run external programs"
+    if cmd == "jq":
+        if any(not a.startswith("-") and _JQ_ENV_RE.search(a) for a in args):
+            return "jq env/$ENV prints environment values"
+    if cmd in CONTENT_READERS:
+        return secret_operand(reader_operands(cmd, args))
+    return None
 
 
 def check_command(command, depth=0):
+    if is_secret_path is None:
+        return "security-reviewer gate cannot load its secret-path helper (fail-closed)"
     if _PROC_ENVIRON_RE.search(command):
         return "reading /proc/*/environ exposes environment secrets"
     try:
@@ -253,7 +320,7 @@ def check_command(command, depth=0):
 def main():
     try:
         data = json.loads(sys.stdin.read())
-        if (not isinstance(data, dict) or data.get("tool_name") != "Bash"
+        if (not isinstance(data, dict) or data.get("tool_name") not in ("Bash", "Read", "Grep")
                 or not is_reviewer_caller(data)):
             out({})
     except SystemExit:
@@ -262,8 +329,16 @@ def main():
         out({})   # cannot identify caller -> fail-open
     try:
         ti = data.get("tool_input")
-        command = ti.get("command") if isinstance(ti, dict) else None
-        reason = check_command(command) if isinstance(command, str) and command.strip() else None
+        if data.get("tool_name") != "Bash":
+            reason = None
+            for key in ("file_path", "path", "glob"):
+                v = ti.get(key) if isinstance(ti, dict) else None
+                if isinstance(v, str) and v and (is_secret_path is None or is_secret_path(v)):
+                    reason = "%s %s names a secret-bearing path" % (key, v)
+                    break
+        else:
+            command = ti.get("command") if isinstance(ti, dict) else None
+            reason = check_command(command) if isinstance(command, str) and command.strip() else None
     except Exception as e:
         reason = "internal error (fail-closed): %r" % (e,)
     if reason:

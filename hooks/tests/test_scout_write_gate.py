@@ -116,5 +116,59 @@ class TestNoOp(unittest.TestCase):
         self.assertEqual(call("Read", {"file_path": "/tmp/x.md"}), {})
 
 
+
+class TestSecrets191(unittest.TestCase):
+    """1.9.1 B1: no secret values in briefings; no Read/Grep of secret files."""
+
+    def _w(self, content):
+        with tempfile.TemporaryDirectory() as d:
+            return call("Write", {"file_path": os.path.join(d, "x_briefing.md"), "content": content})
+
+    def test_secret_content_denied(self):
+        for c in ("key:\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc",
+                  "token ghp_" + "a" * 36,
+                  "github_pat_" + "A" * 40,
+                  "OPENAI=sk-" + "b" * 30,
+                  "slack xoxb-1234567890-abcdef",
+                  "AKIAABCDEFGHIJKLMNOP",
+                  "OP_SERVICE_ACCOUNT_TOKEN=ops_" + "c" * 40,
+                  "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghij",
+                  "api_key: abcdefghijklmnopqrstuv",
+                  'password = "hunter2hunter2hunter2"'):
+            with self.subTest(c=c[:30]):
+                self.assertTrue(is_deny(self._w(c)))
+
+    def test_benign_content_allowed(self):
+        for c in ("# Briefing\n- token comes from os.environ['GH_TOKEN'] (file.py:12)",
+                  "password: <redacted>", "api_key = ${API_KEY}", "uses op://vault/item/field",
+                  "secret: redacted", "plain notes"):
+            with self.subTest(c=c[:30]):
+                self.assertEqual(self._w(c), {})
+
+    def test_read_grep_secret_paths_denied(self):
+        for tool, ti in (("Read", {"file_path": "/home/v/.env"}),
+                         ("Read", {"file_path": "/proc/self/environ"}),
+                         ("Read", {"file_path": "/home/v/.config/op/config"}),
+                         ("Read", {"file_path": "/home/v/.config/gh/hosts.yml"}),
+                         ("Read", {"file_path": "/home/v/.docker/config.json"}),
+                         ("Read", {"file_path": "/home/v/.netrc"}),
+                         ("Read", {"file_path": "/home/v/.ssh/id_ed25519"}),
+                         ("Grep", {"pattern": "TOKEN", "path": "/home/v/.config/op"}),
+                         ("Grep", {"pattern": "TOKEN", "glob": ".env*"})):
+            with self.subTest(tool=tool, ti=ti):
+                self.assertTrue(is_deny(call(tool, ti)))
+
+    def test_read_grep_normal_paths_allowed(self):
+        for tool, ti in (("Read", {"file_path": "/repo/README.md"}),
+                         ("Read", {"file_path": "/repo/.env.example"}),
+                         ("Grep", {"pattern": "x", "path": "/repo/src"})):
+            with self.subTest(tool=tool, ti=ti):
+                self.assertEqual(call(tool, ti), {})
+
+    def test_read_by_other_agents_untouched(self):
+        self.assertEqual(call("Read", {"file_path": "/home/v/.env"},
+                              agent_type="agent-orchestrator:worker"), {})
+
+
 if __name__ == "__main__":
     unittest.main()

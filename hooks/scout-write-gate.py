@@ -8,12 +8,23 @@
 # The path is checked lexically (relative paths joined to the payload cwd) AND after
 # os.path.realpath, so a briefing-named symlink to another target is denied. Any path
 # segment named .git or .claude is denied on both forms.
+# 1.9.1 (B1): the Write content is scanned and denied if it looks like it carries a
+# literal secret (private keys, GitHub/Slack/AWS/1Password/sk- tokens, JWTs, credential
+# assignments), and scout's Read/Grep calls are denied on secret-bearing paths (.env*,
+# keys, ~/.config/op, gh hosts.yml, docker config, .netrc, /proc/*/environ ...), using the
+# shared hooks/_secret_paths.py. Missing helper -> deny (fail-closed for scout).
 import json
 import os
 import re
 import sys
 
-TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _secret_paths import is_secret_path, secret_content
+except Exception:  # pragma: no cover
+    is_secret_path = secret_content = None
+
+TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit", "Read", "Grep")
 BRIEFING_RE = re.compile(r'(^|.*_)briefing\.md\Z')
 FORBIDDEN_SEGMENTS = {".git", ".claude"}
 
@@ -51,6 +62,15 @@ def path_problem(p):
 
 def evaluate(data):
     tool = data.get("tool_name")
+    if is_secret_path is None or secret_content is None:
+        return "scout-write-gate cannot load its secret helper (fail-closed)"
+    ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    if tool in ("Read", "Grep"):
+        for key in ("file_path", "path", "glob"):
+            v = ti.get(key)
+            if isinstance(v, str) and v and is_secret_path(v):
+                return "scout may not read secret-bearing files (%s: %s)" % (key, v)
+        return None
     if tool != "Write":
         return "scout may not use %s; it may only Write *_briefing.md files" % tool
     ti = data.get("tool_input")
@@ -64,6 +84,10 @@ def evaluate(data):
         reason = path_problem(candidate)
         if reason:
             return "%s (path: %s)" % (reason, fp)
+    why = secret_content(ti.get("content"))
+    if why:
+        return ("scout briefings must not contain secret values (looks like: %s); "
+                "cite file:line and redact instead" % why)
     return None
 
 

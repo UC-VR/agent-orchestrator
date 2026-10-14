@@ -111,7 +111,7 @@ FDE / Infinox / OPS-<n> / Projektor issue work is tracked in the corp Projektor 
 - log progress as it goes;
 - close with `finish_work`.
 
-The `verifier`, `judge`, and `scout` cannot reach these tools, so never route tracker calls through them. Never use this for personal / Grok Bot matters — that instance is intentionally unwired.
+The `verifier`, `judge`, `scout`, and `security-reviewer` cannot reach these tools, so never route tracker calls through them. Never use this for personal / Grok Bot matters — that instance is intentionally unwired.
 
 ## Model-Tiering Guidance
 

@@ -33,6 +33,34 @@ def is_deny(r):
 
 
 ALLOW = [
+    "git -C /repo log --oneline -5",
+    "git --no-pager diff HEAD~1",
+    "git remote",
+    "git remote -v",
+    "git remote get-url origin",
+    "git remote show -n origin",
+    "git tag -l",
+    "git tag --list 'v*'",
+    "git ls-tree -r HEAD",
+    "git cat-file -p HEAD",
+    "git branch --contains HEAD",
+    "grep -l TOKEN -r src",
+    "grep -c password config.yaml",
+    "rg -l 'op://' .",
+    "jq '.hooks' hooks.json",
+    "jq '.environment' f.json",
+    "systemctl status nginx",
+    "systemctl --user cat foo.service",
+    "ss -tlnp",
+    "timeout 5 git log",
+    "env FOO=1 git status",
+    "xargs -n1 basename",
+    "ls -la ~/.config",
+    "stat ~/.config/op",
+    "find ~/.config/op -maxdepth 1 -type f",
+    "cat ~/.ssh/id_ed25519.pub",
+    "tree -L 2",
+    "strings bin/x | head",
     "git diff",
     "git diff --stat HEAD~1",
     "git log --oneline -20",
@@ -60,6 +88,82 @@ ALLOW = [
 ]
 
 DENY = [
+    # 1.9.1 B2: secret values
+    "gh auth token",
+    "gh auth status --show-token",
+    "/usr/bin/gh auth token",
+    "printf 'protocol=https\\nhost=github.com\\n' | git credential fill",
+    "git credential fill",
+    "git credential-store get",
+    "cat ~/.config/op/config",
+    "cat ~/.config/o?/config",
+    "grep -rn token ~/.config/op",
+    "cat ~/.config/gh/hosts.yml",
+    "cat ~/.docker/config.json",
+    "cat ~/.netrc",
+    "head ~/.git-credentials",
+    "cat .en[v]",
+    "cat /proc/self/env*",
+    "jq -n env",
+    "jq -n '$ENV.GH_TOKEN'",
+    "git config --get remote.origin.url",
+    # 1.9.1 B2: code execution
+    "git -c alias.x='!id' x",
+    "git -c core.fsmonitor=id status",
+    "git -c core.pager=id log",
+    "git --config-env=core.pager=X log",
+    "git --exec-path=/tmp log",
+    "git -p log",
+    "python3 -m http.server",
+    "python3 script.py",
+    "python script.py",
+    "node script.js",
+    "node -e 'process.env'",
+    "perl x.pl",
+    "ruby x.rb",
+    "sh script.sh",
+    "bash -c 'git log'",
+    "git grep -O foo",
+    "git grep --open-files-in-pager=vi foo",
+    "git diff --ext-diff",
+    "rg --pre=sh foo",
+    "awk 'BEGIN{system(\"id\")}'",
+    "sed -n 1p f",
+    "docker ps",
+    "op vault list",
+    "env -S 'id'",
+    "timeout 5 python3 x.py",
+    "xargs -I{} sh -c 'id'",
+    "nohup id",
+    # 1.9.1 B2: writes
+    "git log --output=/tmp/x",
+    "git diff --output=/tmp/x",
+    "git update-ref -d refs/heads/x",
+    "git checkout-index -f -a",
+    "git remote add x https://e.com/x",
+    "git remote set-url origin https://e.com/x",
+    "git remote show origin",
+    "git notes add -m x",
+    "git tag v9",
+    "git tag -d v1",
+    "git reflog expire --all",
+    "git gc",
+    "curl -o /tmp/x https://e.com",
+    "sort -o out f",
+    "tree -o out",
+    "uniq a b",
+    "systemctl restart nginx",
+    "systemctl stop x",
+    "ss -K dst 1.2.3.4",
+    # 1.9.1 B2: network
+    "curl https://example.com",
+    "curl -s https://example.com | head",
+    "wget https://example.com",
+    "wget -qO- https://example.com",
+    "nc example.com 80",
+    "ssh host",
+    "git fetch",
+    "git ls-remote origin",
     # secret exposure
     "op read op://v/i/f",
     "op item get foo --fields password",
@@ -184,6 +288,19 @@ class TestNoOp(unittest.TestCase):
         self.assertEqual(run_raw("{nope"), {})
         self.assertEqual(run_raw("[]"), {})
         self.assertEqual(bash("cat .env", tool="Read"), {})
+
+    def test_read_grep_secret_paths(self):
+        def call(tool, ti):
+            return run_raw(json.dumps({"tool_name": tool, "agent_id": "a",
+                                       "agent_type": "security-reviewer", "tool_input": ti}))
+        for tool, ti in (("Read", {"file_path": "/h/.env"}), ("Read", {"file_path": "/h/.netrc"}),
+                         ("Read", {"file_path": "/h/.config/op/config"}),
+                         ("Read", {"file_path": "/proc/self/environ"}),
+                         ("Grep", {"pattern": "x", "path": "/h/.config/gh"})):
+            with self.subTest(tool=tool, ti=ti):
+                self.assertTrue(is_deny(call(tool, ti)))
+        self.assertEqual(call("Read", {"file_path": "/repo/README.md"}), {})
+        self.assertEqual(call("Grep", {"pattern": "x", "path": "/repo"}), {})
 
     def test_reviewer_with_missing_command_is_noop(self):
         p = {"tool_name": "Bash", "agent_id": "a", "agent_type": "security-reviewer", "tool_input": {}}
