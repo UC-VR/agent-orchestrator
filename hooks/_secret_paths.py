@@ -24,7 +24,7 @@ _PROC_RE = re.compile(r'(^|/)proc/[^/]*/(environ|.*\*)|(^|/)proc/[^/]*[*?\[]')
 
 def _plain_secret(c):
     p = "/" + c.strip().rstrip("/").lower().replace("\\", "/")
-    p = p.replace("/~/", "/")
+    p = os.path.normpath(p.replace("/~/", "/").replace("/$home/", "/"))
     if "/proc/" in p and "environ" in p:
         return True
     for d in SECRET_DIRS:
@@ -48,7 +48,8 @@ def _plain_secret(c):
 
 def _glob_secret(c):
     """A glob operand is secret if it could expand to a secret path."""
-    p = ("/" + c.strip().rstrip("/").lower().replace("\\", "/")).replace("/~/", "/")
+    p = "/" + c.strip().rstrip("/").lower().replace("\\", "/")
+    p = re.sub(r'/+', "/", p.replace("/~/", "/").replace("/./", "/"))
     if "/proc/" in p or p.startswith("/proc"):
         return True
     b = os.path.basename(p)
@@ -73,31 +74,60 @@ def _glob_secret(c):
 # Flags that make an otherwise "names-only" command read a FILE and echo its lines
 # (often in error output): date -f, file -f, wc/du/sort --files0-from, tree --fromfile,
 # find -files0-from, hostname -F. Both gates deny these outright (1.9.1, verifier NB2).
+# (short-flag regex, dangerous GNU long-option names: any unique PREFIX is accepted by
+# getopt_long, so `--f=`, `--files0=` must match too)
 _INDIRECT = {
-    "date": re.compile(r'^(-[A-Za-z]*f|--file(=|$))'),
-    "file": re.compile(r'^(-[A-Za-z]*f|--files-from(=|$)|-m|--magic-file)'),
-    "wc": re.compile(r'^--files0-from'),
-    "du": re.compile(r'^(--files0-from|-X|--exclude-from)'),
-    "sort": re.compile(r'^--files0-from|^--f(i(l(e(s(0(-(f(r(om?)?)?)?)?)?)?)?)?)?=?$'),
-    "tree": re.compile(r'^--fromfile'),
-    "find": re.compile(r'^-files0-from'),
-    "hostname": re.compile(r'^(-[A-Za-z]*F|--file(=|$))'),
-    "md5sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
-    "sha256sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
-    "sha1sum": re.compile(r'^(-[A-Za-z]*c|--check)'),
-    "shasum": re.compile(r'^(-[A-Za-z]*c|--check)'),
+    "date": (r'^-[A-Za-z]*f', ("file",)),
+    "file": (r'^-[A-Za-z]*[fm]', ("files-from", "magic-file")),
+    "wc": (None, ("files0-from",)),
+    "du": (r'^-[A-Za-z]*X', ("files0-from", "exclude-from")),
+    "sort": (None, ("files0-from",)),
+    "tree": (None, ("fromfile", "fromtabfile")),
+    "find": (r'^-files0-from', ()),
+    "hostname": (r'^-[A-Za-z]*F', ("file",)),
+    "md5sum": (r'^-[A-Za-z]*c', ("check",)),
+    "sha256sum": (r'^-[A-Za-z]*c', ("check",)),
+    "sha1sum": (r'^-[A-Za-z]*c', ("check",)),
+    "shasum": (r'^-[A-Za-z]*c', ("check",)),
 }
 
 
 def indirect_file_read(cmd, args):
     """Reason string if `cmd args` reads a file through a list/format-file flag."""
-    rx = _INDIRECT.get(cmd)
-    if rx is None:
+    spec = _INDIRECT.get(cmd)
+    if spec is None:
         return None
+    short, longs = spec
     for a in args:
-        if a.startswith("-") and rx.match(a):
+        if a.startswith("--"):
+            name = a[2:].split("=", 1)[0]
+            if name and any(l.startswith(name) for l in longs):
+                return "`%s %s` reads a file and can echo its contents" % (cmd, a)
+        elif a.startswith("-") and short and re.match(short, a):
             return "`%s %s` reads a file and can echo its contents" % (cmd, a)
     return None
+
+
+_JQ_PROG_FILE_RE = re.compile(r'\b(import|include)\b')
+_JQ_FILE_FLAGS = ("-L", "--library-path", "-f", "--from-file", "--rawfile", "--slurpfile")
+
+
+def jq_file_read(args):
+    """jq can load files without a file operand: `import "x" as $c` / `include`, -L
+    library paths, -f program files, --rawfile/--slurpfile. Deny all of them (1.9.1 F5)."""
+    for a in args:
+        if a.startswith("--"):
+            if a.split("=", 1)[0] in _JQ_FILE_FLAGS:
+                return "jq %s loads a file" % a
+        elif a.startswith("-"):
+            if re.match(r'^-[A-Za-z]*[Lf]', a):
+                return "jq %s (-L/-f) loads a file" % a
+        elif _JQ_PROG_FILE_RE.search(a):
+            return "jq import/include loads a file"
+    return None
+
+
+_FD_REDIR_RE = re.compile(r'^[0-9]*<+&?')
 
 
 def is_secret_path(arg):
@@ -105,7 +135,8 @@ def is_secret_path(arg):
     expand to a secret-bearing file."""
     if not isinstance(arg, str) or not arg:
         return False
-    cands = {arg, arg.split("=", 1)[-1], arg.rsplit(":", 1)[-1], arg.lstrip("<")}
+    arg = _FD_REDIR_RE.sub("", arg)
+    cands = {arg, arg.split("=", 1)[-1], arg.rsplit(":", 1)[-1]}
     for c in cands:
         if not c:
             continue

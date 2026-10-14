@@ -93,6 +93,24 @@ ALLOW = [
 ]
 
 DENY = [
+    # 1.9.1 round 3 (F1-F5)
+    "date --f=.env",
+    "wc --files0=f",
+    "du --f=f",
+    "file --files=f",
+    "cat 0<.netrc",
+    "cat 0<.git/config",
+    "head 0<.env.local",
+    "cat .git//config",
+    "cat ~/.config//op/config",
+    "cat ~/.docker//config.json",
+    "cat x/../.env",
+    "declare +p GH_TOKEN",
+    "typeset +p FAKEV",
+    "jq -n 'import \"h/.docker/config\" as $c; $c'",
+    "jq -nL ~/.docker '1'",
+    "jq -f prog.jq f.json",
+    "jq --rawfile x f -n '$x'",
     # 1.9.1 NB1/NB2 + minor
     "find ~/.config/op -maxdepth 1 -type f | xargs cat",
     "xargs cat",
@@ -280,7 +298,7 @@ DENY = [
     "sed -ni 1p f",
     "sed --in-place s/a/b/ f",
     "find . -delete",
-    "find . -exec rm {} \;",
+    r"find . -exec rm {} \;",
     "touch f",
     "mkdir d",
     "chmod 777 f",

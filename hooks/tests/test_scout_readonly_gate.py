@@ -68,19 +68,20 @@ def is_deny(result):
 
 
 ALLOW_COMMANDS = [
+    "jq '.a' f.json",
+    "jq -r '.items[].name' f.json",
+    "cat 0<README.md",
     "git remote",
     "date +%F",
     "file README.md",
     "wc -l f",
     "du -sh .",
     "md5sum README.md",
-    "awk 'NR==1{print}' f",
     "cat .env.tpl",
     "cat config/.env.example",
     "grep -rn environ src",
     "rg -n '.env' src",
     "jq '.environment' f.json",
-    "awk '{print $1}' f",
     "ls -la ~/.config",
     "cat ~/.ssh/id_ed25519.pub",
     "chezmoi managed",
@@ -107,7 +108,6 @@ ALLOW_COMMANDS = [
     "sort -r f",
     "tree -L 2",
     "rg -n foo",
-    "yq '.a' f.yaml",
     # legit quoted/escaped READ args must survive shlex unquoting (1.8.4)
     "grep -r \"foo bar\" .",
     "find . -name '*.md'",
@@ -117,10 +117,7 @@ ALLOW_COMMANDS = [
     "uniq -f 1 f",
     "uniq -f1 -c f",
     "uniq -c < f",
-    "awk -v x=1 '{print x}' f",
     "rg 'a|b' .",
-    "awk '{print $1}' f",
-    "awk -F'|' '{print $1}' f",
     "ls 2>&1",
     "ls 2>/dev/null",
     "cat < f",
@@ -129,6 +126,34 @@ ALLOW_COMMANDS = [
 ]
 
 DENY_COMMANDS = [
+    # 1.9.1 round 3 (F1-F5): awk/yq removed, jq file loads, GNU abbreviations, fd redirects, path spellings
+    "awk 'NR==1{print}' f",
+    "awk '{print $1}' f",
+    "awk 'BEGIN{ARGV[1]=\".en\" \"v\"; ARGC=2} 1'",
+    "yq '.a' f.yaml",
+    "yq -n 'load_str(\".env\")'",
+    "jq -n 'import \"h/.docker/config\" as $c; $c'",
+    "jq -n 'include \"x\"; 1'",
+    "jq -n -L ~/.docker 'import \"config\" as $c; $c'",
+    "jq -nL ~/.docker '1'",
+    "jq -f prog.jq f.json",
+    "jq --rawfile x f -n '$x'",
+    "jq --slurpfile x f -n '$x'",
+    "date --f=.env",
+    "date --fi=f",
+    "wc --files0=f",
+    "wc --f=f",
+    "du --f=f",
+    "file --files=f",
+    "tree --fromtabfile f",
+    "cat 0<.netrc",
+    "cat 0<.git/config",
+    "head 0<.env.local",
+    "cat .git//config",
+    "cat ./.git/./config",
+    "cat ~/.config//op/config",
+    "cat ~/.docker//config.json",
+    "cat x/../.env",
     # 1.9.1 NB2 + minor
     "awk 'BEGIN{getline l < \".env\"; print l}'",
     "awk 'BEGIN{while((getline l < \"f\")>0) print l}'",
@@ -369,3 +394,23 @@ class TestScoutReadonlyGateNoOpForOthers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFailClosed(unittest.TestCase):
+    """1.9.1 M1: a damaged install without the helper modules must deny scout."""
+
+    def test_missing_helpers_denies_scout(self):
+        import shutil
+        import tempfile
+        src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "scout-readonly-gate.py")
+        with tempfile.TemporaryDirectory() as d:
+            dst = os.path.join(d, "scout-readonly-gate.py")
+            shutil.copy(src, dst)
+            payload = {"tool_name": "Bash", "agent_id": "a", "agent_type": "agent-orchestrator:scout",
+                       "tool_input": {"command": "ls"}}
+            proc = subprocess.run([sys.executable, dst], input=json.dumps(payload),
+                                  capture_output=True, text=True, timeout=10)
+            self.assertEqual(proc.returncode, 0)
+            out = json.loads(proc.stdout or "{}")
+            self.assertEqual(out.get("hookSpecificOutput", {}).get("permissionDecision"), "deny", proc.stdout + proc.stderr)

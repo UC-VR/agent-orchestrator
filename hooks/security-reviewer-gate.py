@@ -60,7 +60,7 @@ _ENV_ASSIGN_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 
 try:  # shared helper; if missing, every reviewer call is denied (fail-closed)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from _secret_paths import is_secret_path, indirect_file_read
+    from _secret_paths import is_secret_path, indirect_file_read, jq_file_read, _FD_REDIR_RE
 except Exception:  # pragma: no cover
     is_secret_path = None
 
@@ -148,7 +148,7 @@ def split_command(command):
 def reader_operands(cmd, args):
     out, skip_first, take = [], cmd in PATTERN_FIRST, False
     for a in args:
-        a = a.lstrip("<")
+        a = _FD_REDIR_RE.sub("", a)
         if not a:
             continue
         if take:
@@ -257,9 +257,9 @@ def check_tokens(tokens, depth=0):
         return check_tokens(inner, depth + 1)
     if cmd not in ALLOWED:
         return "`%s` is not on the security-reviewer allowlist (default-deny)" % cmd
-    dashless = [a for a in args if not a.startswith("-")]
+    dashless = [a for a in args if not a.startswith(("-", "+"))]
     if cmd in ("export", "declare", "typeset", "readonly"):
-        if not dashless or any(a.startswith("-") and ("p" in a or "x" in a and not dashless) for a in args):
+        if not dashless or any(a.startswith(("-", "+")) and "p" in a for a in args):
             return "`%s` listing prints environment values" % cmd
         return None
     reason = indirect_file_read(cmd, args)
@@ -287,6 +287,8 @@ def check_tokens(tokens, depth=0):
     if cmd == "rg" and any(re.match(r'^--(pre|hostname-bin|search-zip)(=|$)|^-z', a) for a in args):
         return "rg --pre/--search-zip run external programs"
     if cmd == "jq":
+        if jq_file_read(args):
+            return jq_file_read(args)
         if any(not a.startswith("-") and _JQ_ENV_RE.search(a) for a in args):
             return "jq env/$ENV prints environment values"
     if cmd in CONTENT_READERS:

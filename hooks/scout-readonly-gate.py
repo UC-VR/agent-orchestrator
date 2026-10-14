@@ -28,7 +28,7 @@ import os
 
 try:  # shared secret-path helpers (1.9.1); missing -> scout is denied (fail-closed)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from _secret_paths import is_secret_path, indirect_file_read
+    from _secret_paths import is_secret_path, indirect_file_read, jq_file_read
     import _scout_checks
     globals().update({k: v for k, v in vars(_scout_checks).items() if not k.startswith('__')})
 except Exception:  # pragma: no cover
@@ -39,7 +39,8 @@ except Exception:  # pragma: no cover
 # environment (secrets). With env gone, no wrapper command re-enters check_tokens.
 # 1.9.1 (B1): scout must not read the environment or secret files by any route:
 # /proc/*/environ (any spelling or glob), jq/yq env/$ENV/strenv/envsubst, awk ENVIRON/
-# PROCINFO, `less` (LESSOPEN/+! escapes) and chezmoi verbs that render templates
+# PROCINFO, (awk and yq were later removed entirely: awk ARGV and yq load/load_str read
+# arbitrary files; jq import/include/-L/-f/--rawfile/--slurpfile are denied), `less` (LESSOPEN/+! escapes) and chezmoi verbs that render templates
 # (cat/diff/status/dump/data/verify run `output`/onepassword* template functions) are
 # denied, and every file operand of a content-reading command is checked against the
 # shared secret-path list (.env*, keys, ~/.config/op, gh hosts.yml, docker config, .netrc,
@@ -50,7 +51,7 @@ except Exception:  # pragma: no cover
 
 ALLOWLIST = {
     "git", "chezmoi", "wc", "du", "stat", "ls", "find", "cat", "head", "tail",
-    "grep", "rg", "jq", "yq", "sort", "uniq", "cut", "awk", "tr",
+    "grep", "rg", "jq", "sort", "uniq", "cut", "tr",
     "echo", "printf", "pwd", "whoami", "hostname", "date",
     "which", "where", "type", "file", "readlink", "realpath", "basename",
     "dirname", "tree", "diff", "cmp", "md5sum", "sha256sum", "shasum",
@@ -187,6 +188,8 @@ def check_tokens(tokens):
         return check_rg(tokens)
     if first == "awk":
         return check_awk(tokens)
+    if first == "jq" and jq_file_read(tokens[1:]):
+        return "scout may not read files via jq: " + jq_file_read(tokens[1:])
     if first in ("jq", "yq"):
         return check_jq_yq(first, tokens)
     if first == "uniq":
@@ -250,6 +253,8 @@ def split_segments(command):
     return segs
 
 def evaluate(command):
+    if is_secret_path is None:   # helper modules missing: fail CLOSED for scout
+        return "scout gate cannot load its helper modules (fail-closed)"
     # Raw-string checks first: these must see the command before any unquoting.
     if _PROC_ENV_RAW_RE.search(command) or "/proc/" in command and re.search(r'/proc/[^\s]*[*?\[]', command):
         return "scout may not read the environment (/proc/*/environ)"

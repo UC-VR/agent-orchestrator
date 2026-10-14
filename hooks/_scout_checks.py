@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Per-command argv checks for hooks/scout-readonly-gate.py (split out in 1.9.1 to keep
 # each file under 500 lines). Imported by the gate from its own directory; if this
-# module cannot be imported the gate denies every scout Bash call (fail-closed).
+# module cannot be imported the gate denies every scout Bash call (fail-closed; tested
+# in test_scout_readonly_gate.TestFailClosed).
 # All checks run on the shlex-UNQUOTED argv.
 import re
 
