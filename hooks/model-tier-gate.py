@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # PreToolUse gate: enforce model-tier policy on Agent/Task spawns. FAIL-OPEN on any error.
-# Policy: subagents run sonnet or opus. fable is banned everywhere (orchestrator main thread only).
+# Policy: subagents run sonnet or opus. fable is banned everywhere (orchestrator main thread only)
+# EXCEPT the exact pool id "pool-fable" for the plugin's `planner` agent (1.10.1).
 # Model values are matched by SUBSTRING on the lowercased string, so 9router pool ids work the same
-# as aliases: "pool-fable"/"pool-fable-high" contain "fable" (denied), "pool-haiku" contains "haiku"
-# (allowlisted types only), "pool-opus*"/"pool-sonnet*" pass. The Agent tool's `model` param is an
-# enum (sonnet|opus|haiku|fable), so pool ids normally arrive via agent frontmatter, not here.
+# as aliases: "pool-fable"/"pool-fable-high" contain "fable" (denied unless the planner exception
+# applies), "pool-haiku" contains "haiku" (allowlisted types only), "pool-opus*"/"pool-sonnet*" pass.
+# The Agent tool's `model` param is an enum (sonnet|opus|haiku|fable), so pool ids normally arrive
+# via agent frontmatter, not here.
 # Haiku 5.5 ("haiku", "pool-haiku", "claude-haiku-5-5") is allowed ONLY for the bare agent types in
-# HAIKU_OK (cheap enumeration/lookup work); never for verifier, judge, security-reviewer, workers or
-# any code-editing type. Haiku 4.x / 3.x ids are denied for every type. Precedence: fork deny,
+# HAIKU_OK (cheap enumeration/lookup work); never for verifier, judge, security-reviewer, planner,
+# workers or any code-editing type. "pool-haiku-high" is narrower still: scout only (HAIKU_HIGH_OK). Haiku 4.x / 3.x ids are denied for every type. Precedence: fork deny,
 # forbidden (fable) deny, haiku deny, unpinned-no-model deny all take effect over any input strip.
 import os, sys, json, re, subprocess, shutil
 
@@ -26,11 +28,20 @@ FORBIDDEN = ("fable",)
 # Bare lowercase subagent_type values (after prefix strip) that may run Haiku 5.5.
 HAIKU_OK = {"scout", "explore", "claude-code-guide", "statusline-setup"}
 # Never Haiku, even if someone later adds them to HAIKU_OK (enforced below).
-HAIKU_NEVER = {"verifier", "final-verifier", "judge", "security-reviewer"}
+HAIKU_NEVER = {"verifier", "final-verifier", "judge", "security-reviewer", "planner"}
 HAIKU_OK -= HAIKU_NEVER
-# Pinned fleet types (orchestrator, worker, verifier, final-verifier, judge, scout, security-reviewer)
-# carry a pool id in their frontmatter, so they are simply absent from UNPINNED: with no explicit model
-# they resolve to that pin (Rule 3/default allow). There is no separate pinned list to maintain.
+# Types that may use the "-high" haiku pool (pool-haiku-high); other haiku-ok types get plain haiku only.
+HAIKU_HIGH_OK = {"scout"}
+# The only fable exception: exact model id + the plugin-qualified type, taken from `subagent_type`
+# ONLY (never `agentType`, never a bare "planner": bare names do not resolve to this plugin's agents
+# and could be an untrusted ~/.claude/agents/planner.md). If `agentType` is also set and disagrees,
+# no exception. The planner agent is pinned to pool-fable in its own frontmatter.
+# HAIKU_NEVER stays broad: "planner" matches bare and prefixed forms (bare = text after the last ":").
+FABLE_OK_MODEL = "pool-fable"
+FABLE_OK_TYPE = "agent-orchestrator:planner"
+# Pinned fleet types (orchestrator, worker, planner, verifier, final-verifier,
+# judge, scout, security-reviewer) carry a pool id in their frontmatter, so they are simply absent
+# from UNPINNED: with no explicit model they resolve to that pin (Rule 3/default allow). There is no separate pinned list to maintain.
 # Haiku 4.x / 3.x model-id substrings: always denied.
 HAIKU_OLD = ("haiku-4", "3-5-haiku", "3-haiku", "claude-haiku-4")
 
@@ -107,6 +118,12 @@ def main():
     if not isinstance(atype, str) or not atype:
         atype = ti.get("agentType")
     atype_s = atype.strip().lower() if isinstance(atype, str) else ""
+    # Trusted planner identity for the fable exception: subagent_type only, exact match, no conflict.
+    st = ti.get("subagent_type")
+    st_s = st.strip().lower() if isinstance(st, str) else ""
+    at = ti.get("agentType")
+    conflict = at not in (None, "") and not (isinstance(at, str) and at.strip().lower() == st_s)
+    planner_ok = st_s == FABLE_OK_TYPE and not conflict
     bare = atype_s.split(":")[-1] if atype_s else ""   # strip "agent-orchestrator:" prefix
     if not bare:
         bare = "general-purpose"   # Claude Code defaults a missing subagent_type to general-purpose
@@ -146,10 +163,12 @@ def main():
         deny("Model-tier policy: fork inherits the orchestrator's model tier; spawn a "
              "typed agent instead. Override: ORCHESTRATOR_ALLOW_FORK=1.")
 
-    # Rule 1: explicit forbidden model tier (fable)
+    # Rule 1: explicit forbidden model tier (fable); sole exception: pool-fable for agent-orchestrator:planner
     if model_s and any(f in model_s for f in FORBIDDEN):
-        deny("Blocked by model-tier policy: fable is reserved for the orchestrator "
-             "main thread and is never used for subagents. Re-spawn with model: sonnet or opus (or a pool-sonnet*/pool-opus* pool id).")
+        if not (model_s == FABLE_OK_MODEL and planner_ok):
+            deny("Blocked by model-tier policy: fable is reserved for the orchestrator "
+                 "main thread and is never used for subagents (sole exception: model pool-fable "
+                 "for subagent_type agent-orchestrator:planner). Re-spawn with model: sonnet or opus (or a pool-sonnet*/pool-opus* pool id).")
     # Rule 1b: Haiku is allowlisted by agent type, and only the 5.x line
     if "haiku" in model_s:
         if any(o in model_s for o in HAIKU_OLD):
@@ -162,6 +181,9 @@ def main():
                  "claude-code-guide and statusline-setup (cheap enumeration/lookup work) - "
                  "never for verification, judgement, code edits or security review. "
                  "Re-spawn %s with model: sonnet or opus." % (bare or "this agent"))
+        if "high" in model_s and bare not in HAIKU_HIGH_OK:
+            deny("Blocked by model-tier policy: pool-haiku-high is allowed only for "
+                 "scout. Re-spawn %s with plain haiku, sonnet or opus." % bare)
     # Rule 2: unpinned agent type with no explicit model (would inherit caller's model)
     if not model_s and bare in UNPINNED:
         deny("Model-tier policy: unpinned agent types "

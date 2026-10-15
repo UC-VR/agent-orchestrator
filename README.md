@@ -21,6 +21,8 @@ Before spawning any worker, the orchestrator runs a routing step:
 
 This keeps routing **current** (reads the live list) and **auditable** (logs the why).
 
+The repo also ships a **`planner`** agent (`agents/planner.md`, `model: pool-fable`, tools Read/Glob/Grep only): the orchestrator's planning step. It returns a plan (goal, subtasks with deliverable, acceptance check and suggested agent, ordering, risks, open questions) and does not edit code, run commands or fetch the web; when web content is needed the orchestrator has a `worker` fetch it and passes the planner a summary, and commands, URLs and dependencies in a plan are unverified until a worker or verifier checks them. `pool-fable` is allowed by the model-tier gate for `subagent_type` `agent-orchestrator:planner` only.
+
 The repo also ships a **`worker`** agent: the default leaf executor for minor, well-scoped tasks, running on a cheaper model tier with built-in craftsmanship principles (think-before-coding, simplicity, surgical changes, goal-driven verification).
 
 #### Scout (bulk input pre-analysis)
@@ -35,42 +37,44 @@ Once a tournament runs: name 2–3 materially different approaches, spawn one pr
 
 The comparative gate itself has three tiers: **invariant** (never present a producer's own ranking as your conclusion — label it "producer-ranked, unjudged"), **offer** (default: when a report contains ≥2 ranked options, offer the judge pass via AskUserQuestion), and **mandatory** (only when the ranking will be acted on unreviewed in the same session, or the user explicitly asked for a ranking as the deliverable).
 
-The `judge` is shipped as its own agent (`agents/judge.md`, `model: pool-opus-high`): read-only, evidence-grounded per-criterion scoring, honest tie-flagging, and a graft list — it ranks, it does not fix or merge.
+The `judge` is shipped as its own agent (`agents/judge.md`, `model: pool-opus`): read-only, evidence-grounded per-criterion scoring, honest tie-flagging, and a graft list — it ranks, it does not fix or merge.
 
 ### 3. Verification gate (backed by the `verifier` subagent)
 
 Before delivering high-stakes output (code changes, multi-file edits, refactors, config changes), the orchestrator runs a verification gate:
 
-- Spawns the dedicated **`verifier`** subagent (agentType `agent-orchestrator:verifier`, pool-sonnet) for pre-final rounds and **`final-verifier`** (`agent-orchestrator:final-verifier`, pool-opus-high, same contract) for the last gate before delivery or push — each is an independent, adversarial, **read-only** checker with its own fresh context. It tries to *falsify* the producer's work, re-deriving correctness from the actual artifact and ground truth (files, command output, sources) rather than the producer's summary, and returns a binary **`VERIFIED` / `ISSUES FOUND`** verdict grounded in evidence.
+- Spawns the dedicated **`verifier`** subagent (agentType `agent-orchestrator:verifier`, pool-sonnet-high) for pre-final rounds and **`final-verifier`** (`agent-orchestrator:final-verifier`, pool-opus, same contract) for the last gate before delivery or push — each is an independent, adversarial, **read-only** checker with its own fresh context. It tries to *falsify* the producer's work, re-deriving correctness from the actual artifact and ground truth (files, command output, sources) rather than the producer's summary, and returns a binary **`VERIFIED` / `ISSUES FOUND`** verdict grounded in evidence.
 - Uses **bounded retries** — on `ISSUES FOUND`, the blocking findings go back to the producer or a fixer agent, capped at ~1–2 iterations to avoid infinite loops.
 - **Escalates** the unresolved issue to the user after the cap instead of looping or shipping broken work.
 
 Governing principle: **for mechanical work the bottleneck is verification, not generation** — a plausible change is cheap, confirming it is the hard part. **For decision-shaped work the bottleneck is comparison** — a single draft has nothing to be better than. Comparison is offered by default and imposed only when the choice will be acted on unreviewed.
 
-The `verifier` is shipped as its own agent (`agents/verifier.md`, `model: pool-sonnet`, used for pre-final rounds): it checks, it does not fix (no Write/Edit tools by design), it never delegates, and it never rubber-stamps.
+The `verifier` is shipped as its own agent (`agents/verifier.md`, `model: pool-sonnet-high`, used for pre-final rounds): it checks, it does not fix (no Write/Edit tools by design), it never delegates, and it never rubber-stamps.
 
 ### 4. Model-tiering guidance (enforced)
 
 The orchestrator matches model strength to task difficulty — and since v1.6.0 this is mechanically enforced, not just prose:
 
-- The orchestrator is pinned to `pool-opus`; no subagent may run on the orchestrator-reserved `fable` tier (`pool-fable`, `pool-fable-high`).
+- The orchestrator is pinned to `pool-opus`; no subagent may run on the orchestrator-reserved `fable` tier (`pool-fable`, `pool-fable-high`), with one exception: the `planner` agent is pinned to `pool-fable` (exact id, and only when `subagent_type` is exactly `agent-orchestrator:planner`).
 - Every Agent-tool spawn must carry an **explicit `model` param** — no inheritance.
-- **Pool map** (frontmatter `model:` is a 9router pool id, passed through verbatim; only live pools are used and `pool-sonnet-high` does not exist):
+- **Pool map** (frontmatter `model:` is a 9router pool id, passed through verbatim; only live pools are used; `pool-sonnet-high` and `pool-haiku-high` are live as of 2026-10-15):
 
   | Agent / use | Pool |
   |---|---|
   | `orchestrator` | `pool-opus` |
+  | `planner` | `pool-fable` |
   | `worker`, `general-purpose` | `pool-sonnet` |
-  | `scout`, `Explore`, summaries | `pool-haiku` |
-  | `judge`, `security-reviewer` | `pool-opus-high` |
-  | `verifier` (pre-final rounds) | `pool-sonnet` |
-  | `final-verifier` (last gate before delivery or push) | `pool-opus-high` |
+  | `scout`, `Explore`, summaries | `pool-haiku` (`scout` may also use `pool-haiku-high`) |
+  | `judge` | `pool-opus` |
+  | `security-reviewer` | `pool-opus-high` |
+  | `verifier` (pre-final rounds) | `pool-sonnet-high` |
+  | `final-verifier` (last gate before delivery or push) | `pool-opus` |
   | lint-style checks | `pool-sonnet-low` |
 
-  **Haiku only for `scout`/`Explore`/`claude-code-guide`/`statusline-setup`** (never verification, judgement, code edits or security review; Haiku 4.x/3.x denied).
-- **Why `final-verifier` is a separate agent.** The Agent tool's `model` parameter is an enum (`sonnet|opus|haiku|fable`) and cannot carry a pool id, so a per-call override to `pool-opus-high` is not possible. `agents/final-verifier.md` is the `verifier` contract pinned to `pool-opus-high`; the orchestrator uses `verifier` for bounded pre-final rounds and `final-verifier` for the last pass.
+  **Haiku only for `scout`/`Explore`/`claude-code-guide`/`statusline-setup`**, and `pool-haiku-high` for `scout` only (never verification, judgement, planning, code edits or security review; Haiku 4.x/3.x denied).
+- **Why `final-verifier` is a separate agent.** The Agent tool's `model` parameter is an enum (`sonnet|opus|haiku|fable`) and cannot carry a pool id, so a per-call override to `pool-opus` is not possible. `agents/final-verifier.md` is the `verifier` contract pinned to `pool-opus`; the orchestrator uses `verifier` for bounded pre-final rounds and `final-verifier` for the last pass.
 - **Gap (built-ins).** `general-purpose` and `Explore` can only be given an alias (`sonnet`/`haiku`); it routes to `pool-sonnet`/`pool-haiku` only if the host maps aliases to pools (e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=pool-sonnet`, `ANTHROPIC_DEFAULT_HAIKU_MODEL=pool-haiku`). This plugin does not edit host settings.
-- A `PreToolUse` **`model-tier-gate`** hook denies any `fable` spawn, denies `haiku` for every agent type outside the allowlist above (and Haiku 4.x/3.x ids everywhere), and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `verifier`, `final-verifier`, `judge`, `scout`, `security-reviewer`) resolve their own frontmatter pool. Matching is by substring, so pool ids behave like aliases (`pool-fable*` denied, `pool-haiku` allowlisted types only). It fails open on any internal error, so it never bricks spawning.
+- A `PreToolUse` **`model-tier-gate`** hook denies any `fable` spawn (sole exception: exactly `pool-fable` with `subagent_type` `agent-orchestrator:planner`), denies `haiku` for every agent type outside the allowlist above (and Haiku 4.x/3.x ids everywhere), and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, `security-reviewer`) resolve their own frontmatter pool. Matching is by substring, so pool ids behave like aliases (`pool-fable*` denied except `pool-fable` for `agent-orchestrator:planner`, `pool-haiku` allowlisted types only, `pool-haiku-high` `scout` only). It fails open on any internal error, so it never bricks spawning.
 - The same hook (since v1.7.2) handles Agent/Task spawns that pass a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Since v1.8.6 the hook strips `name` (plus teammate-only `team_name`/`teamName`/`mode`) via `updatedInput` and lets the spawn proceed as a plain subagent when the CLI is ≥ 2.1.290 (the other tier rules still apply to the stripped input); on an older or undetectable CLI it denies instead. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1` (keeps `name`, no strip).
 - (Since v1.7.3) That named-spawn check only runs when the incoming call's `tool_name` is `Agent` or `Task` — any other tool (e.g. `Bash`, which also accepts a `name`-shaped argument for unrelated reasons) is allowed through untouched. This keeps the gate scoped to spawns even though its `hooks.json` matcher already restricts it to `Agent|Task`, so the script enforces the same scope it claims.
 
@@ -78,7 +82,7 @@ This can cut cost substantially on well-scoped tasks — conditional on the revi
 
 ### 4b. Loop guard (no polling loops, subagent lifetime limit)
 
-`hooks/loop-guard.py` (PreToolUse, matcher `*`, best-effort, **fails open** on any internal error) answers an observed incident: one orchestrator made 142 status checks (37 identical in a row), 28 `TaskStop` and 26 respawns. It denies the 5th identical consecutive status-check call (`ListAgents`, `TaskOutput`, `TaskGet`, `TaskList`, `BashOutput`, `TaskStop`, `SendMessage`, Bash where the whole command is `sleep N`, or a `sleep`/`tail`/`cat` on one of Claude Code's task output files, and Read of such a file; task output files are `.../tasks/<id>.output` or `.output` files under a `/claude-<uid>/` tmp tree, so ordinary files in a `tasks/` directory such as Ansible roles and `sleep 5 && curl ...` health checks are never watched), or the 8th within 5 minutes, with an exponential backoff (30s, 60s, 120s, cap 10m; the deny message states the exact wait, and denied retries do not extend it), and caps `TaskStop` at 6 per hour. For subagents it also counts tool calls: at ~150 calls or 4 hours it warns (compact or return a handoff summary), and denies at 1.5x. State is per session and agent under `${XDG_CACHE_HOME:-~/.cache}/agent-orchestrator/`. Overrides: `LOOP_GUARD_MAX_IDENTICAL`, `_WINDOW_MAX`, `_WINDOW_SECS`, `_MAX_STOPS`, `_MAX_TURNS`, `_MAX_HOURS`, `_HARD_FACTOR`, `LOOP_GUARD_DISABLE=1`. Known limit: alternating two different watched calls evades the streak rule (the window rule still applies).
+`hooks/loop-guard.py` (PreToolUse, matcher `*`, best-effort, **fails open** on any internal error) answers an observed incident: one orchestrator made 142 status checks (37 identical in a row), 28 `TaskStop` and 26 respawns. It denies the 5th identical consecutive status-check call (`ListAgents`, `TaskOutput`, `TaskGet`, `TaskList`, `BashOutput`, `TaskStop`, `SendMessage`, Bash where the whole command is `sleep N`, or a `sleep`/`tail`/`cat` on one of Claude Code's task output files, and Read of such a file; task output files are `.../tasks/<id>.output` or `.output` files under a `/claude-<uid>/` tmp tree, so ordinary files in a `tasks/` directory such as Ansible roles and `sleep 5 && curl ...` health checks are never watched), or the 8th within 5 minutes, with an exponential backoff (30s, 60s, 120s, cap 10m; the deny message states the exact wait, and denied retries do not extend it), and caps `TaskStop` at 6 per hour. For subagents it also counts tool calls: at ~150 calls or 4 hours it warns (compact or return a handoff summary), and denies at 1.5x. State is per session and agent under `${XDG_CACHE_HOME:-~/.cache}/agent-orchestrator/`; the `$TMPDIR` fallback is used only if that directory is a real (non-symlink) directory owned by the current user with mode 0700, the state file is opened with `O_NOFOLLOW`, watched Bash commands and Read paths are stored only as hashes (no plaintext), the number of stored signatures is capped (oldest dropped first), and whitespace is collapsed before matching, so padding cannot hide a repeated call: the signature hashes the full normalised command, but the regexes only see at most 4096 characters of it (head and tail), which bounds their cost. A trailing `# comment` does not hide a bare `sleep N`. Overrides: `LOOP_GUARD_MAX_IDENTICAL`, `_WINDOW_MAX`, `_WINDOW_SECS`, `_MAX_STOPS`, `_MAX_TURNS`, `_MAX_HOURS`, `_HARD_FACTOR`, `LOOP_GUARD_DISABLE=1`. Known limit: alternating two different watched calls evades the streak rule (the window rule still applies).
 
 ### 5. Reminder hook (soft nudge, not enforcement)
 
@@ -146,14 +150,14 @@ Prefer to let Claude Code do the install for you? Paste the prompt below into a 
 > 1. Add the marketplace and install the plugin:
 >    - Run `/plugin marketplace add https://github.com/UC-VR/agent-orchestrator.git`
 >    - Run `/plugin install agent-orchestrator@agent-orchestrator`
->    The plugin ships the `orchestrator`, `worker`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
+>    The plugin ships the `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
 > 2. Before changing any settings, back up my global settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak` (skip if the file does not exist).
 > 3. Apply the machine-local settings that do NOT travel in a plugin, merging into existing config rather than overwriting it — never drop my existing hooks, permissions, or other keys:
 >    - Set the orchestrator thread to a strong model (e.g. Opus) via `/config`.
 >    - Agent teams are disabled fleet-wide (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` since 2026-10-06): teammate tools are clamped to the lead's and hook payloads lose the agent type. Named spawns are plain subagents; track by returned ID. Do not enable them.
 >    - If I want the orchestrator to be the main thread, point my `agent` setting at it (or note that I can launch with `claude --agent orchestrator`).
 >    - Approve the tool/command permissions the orchestrator and its subagents need (Bash, file writes, network) when prompted.
-> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
+> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
 >
 > Prerequisite: the reminder hook is a POSIX shell script, so on Windows make sure an `sh` (e.g. Git Bash) is available to Claude Code. `jq` is not required.
 
@@ -186,6 +190,17 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.10.1
+
+- **1.10.1: role map update (`planner`, new pins), model-tier-gate rules, loop-guard P2 hardening.**
+  - **New 9router pools** `pool-sonnet-high` and `pool-haiku-high` (created on vr-omni1, live as of 2026-10-15). The 1.10.0 note that `pool-sonnet-high` does not exist is superseded.
+  - **New `planner` agent** (`agents/planner.md`, `model: pool-fable`, tools Read/Glob/Grep, read-only): the orchestrator's planning step. It returns a plan with per-subtask acceptance checks and suggested agents; it does not edit code or run commands. The orchestrator's dispatch protocol now routes planning to it. It has no WebFetch or shell (a worker fetches web content for it), and commands, URLs and dependencies in its plans are unverified until a worker or verifier checks them.
+  - **New pins.** `verifier` `pool-sonnet-high` (was `pool-sonnet`), `final-verifier` `pool-opus` (was `pool-opus-high`), `judge` `pool-opus` (was `pool-opus-high`). Unchanged: `orchestrator` `pool-opus`, `worker` `pool-sonnet`, `scout` `pool-haiku`, `security-reviewer` `pool-opus-high`. The orchestrator tier map, dispatch step 5 and Verification-Gate text follow the new map.
+  - **`model-tier-gate` rules.** `pool-fable` is allowed only when `subagent_type` is exactly `agent-orchestrator:planner` (exact model id; never granted from `agentType`, never for a bare `planner` since bare names do not resolve to this plugin's agents, and denied when `subagent_type` and `agentType` disagree); `pool-fable-high`, `fable` and every other type stay denied. `planner` stays in the Haiku-never set in both bare and prefixed forms. `pool-haiku-high` is allowed for `scout` only (the other Haiku-allowlisted types keep plain Haiku). `planner` joins the Haiku-never set. Pinned agents dispatched with no model still pass. New tests cover each rule with negative cases.
+  - **`loop-guard` P2 hardening** (the three items left open in 1.10.0): (a) the `$TMPDIR` fallback state dir is used only if it is a real, non-symlink directory owned by the current user with mode 0700 (it is created 0700 and `fchmod`ed so umask cannot break it), otherwise the hook fails open; the state file is opened with `O_NOFOLLOW` and `fchmod`ed 0600; (b) watched Bash commands and Read paths are stored as sha256 digests, never plaintext; (c) state keys are capped at 200 (oldest dropped first), and commands are whitespace-normalised before matching, with the regexes seeing at most 4096 characters (head and tail) while the signature hashes the full normalised string, so padding cannot evade the polling rule. A trailing `# comment` does not hide a bare `sleep N`. New tests in `hooks/tests/test_loop_guard_hardening.py`. State files written by 1.10.0 may still contain plaintext commands until they are pruned (3 days); they can be removed manually with `rm ~/.cache/agent-orchestrator/loopguard-*.json` (nothing deletes them for you).
+  - **Scope note.** A built-in-replacement pair (`explorer`, `generalist` plugin agents) was considered and dropped: no such agents ship. The built-ins `Explore` and `general-purpose` are unchanged and keep their existing guidance (`model: sonnet` / `model: haiku` aliases). `cf-builder` has no agent file in this repo, so it is not pinned here.
+  - **Known residual evasions (accepted, best-effort guardrails).** The polling guard is not a sandbox. These still go unwatched: `sleep 5;`, `sleep 5#c` (no space before `#`), zero-width or other non-whitespace padding, multi-line sleeps, and a task `.output` path in the middle of a command longer than 4096 characters (only the head and tail are scanned).
 
 ### v1.10.0
 

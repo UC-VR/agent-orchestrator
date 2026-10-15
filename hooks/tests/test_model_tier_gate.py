@@ -173,6 +173,112 @@ class TestPoolIds(unittest.TestCase):
         self.assertIn("pool-sonnet", reason(spawn({"subagent_type": "scout", "model": "pool-fable"})))
 
 
+class TestPlannerPool(unittest.TestCase):
+    """1.10.1: planner may use pool-fable (only); scout may use pool-haiku-high."""
+    def test_pool_fable_allowed_for_planner_only(self):
+        for t in ("agent-orchestrator:planner", "Agent-Orchestrator:Planner", " agent-orchestrator:planner "):
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-fable"}), {}, t)
+            self.assertEqual(spawn({"subagent_type": t, "model": " POOL-FABLE "}), {}, t)
+        for t in ("planner", "agent-orchestrator:worker", "worker", "agent-orchestrator:verifier",
+                  "agent-orchestrator:judge", "scout", "general-purpose", "plan",
+                  "agent-orchestrator:final-verifier", "agent-orchestrator:security-reviewer"):
+            self.assertTrue(is_deny(spawn({"subagent_type": t, "model": "pool-fable"})), t)
+        self.assertTrue(is_deny(spawn({"model": "pool-fable"})))   # missing type -> general-purpose
+
+    def test_planner_other_fable_ids_denied(self):
+        for m in ("pool-fable-high", "fable", "FABLE", "claude-fable-1", "pool-fable-low", "pool-fable2"):
+            for t in ("planner", "agent-orchestrator:planner"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_fable_exception_needs_exact_plugin_prefix(self):
+        for t in ("other-plugin:planner", "planner", "x:agent-orchestrator:planner", "agent-orchestrator:planner2"):
+            self.assertTrue(is_deny(spawn({"subagent_type": t, "model": "pool-fable"})), t)
+
+    def test_bare_planner_pool_fable_denied(self):
+        # bare names do not resolve to this plugin's agents (could be an untrusted planner.md)
+        res = spawn({"subagent_type": "planner", "model": "pool-fable"})
+        self.assertTrue(is_deny(res))
+        self.assertIn("agent-orchestrator:planner", reason(res))
+
+    def test_fable_exception_never_via_agent_type_key(self):
+        pl = "agent-orchestrator:planner"
+        for ti in ({"agentType": pl, "model": "pool-fable"},                           # agentType only
+                   {"subagent_type": "", "agentType": pl, "model": "pool-fable"},      # empty subagent_type
+                   {"subagent_type": None, "agentType": pl, "model": "pool-fable"},
+                   {"subagent_type": 7, "agentType": pl, "model": "pool-fable"},       # non-string
+                   {"subagent_type": "   ", "agentType": pl, "model": "pool-fable"}):
+            self.assertTrue(is_deny(spawn(ti)), ti)
+        self.assertTrue(is_deny(spawn({"agentType": "agent-orchestrator:worker", "model": "pool-fable"})))
+
+    def test_fable_exception_denied_when_types_disagree(self):
+        pl = "agent-orchestrator:planner"
+        for st, at in (("worker", pl), ("agent-orchestrator:worker", pl), (pl, "agent-orchestrator:worker"),
+                       (pl, "general-purpose"), (pl, "planner"), (pl, 5)):
+            self.assertTrue(is_deny(spawn({"subagent_type": st, "agentType": at, "model": "pool-fable"})), (st, at))
+        # agreeing (case/space-insensitive) or absent agentType stays allowed
+        self.assertEqual(spawn({"subagent_type": pl, "agentType": " Agent-Orchestrator:Planner ",
+                                "model": "pool-fable"}), {})
+        self.assertEqual(spawn({"subagent_type": pl, "agentType": pl, "model": "pool-fable"}), {})
+        self.assertEqual(spawn({"subagent_type": pl, "agentType": None, "model": "pool-fable"}), {})
+
+    def test_planner_task_alias_and_fork(self):
+        self.assertEqual(spawn({"subagent_type": "agent-orchestrator:planner", "model": "pool-fable"},
+                               tool_name="Task"), {})
+        self.assertTrue(is_deny(spawn({"subagent_type": "fork", "model": "pool-fable"})))
+
+    def test_planner_name_strip_keeps_pool_fable(self):
+        o = out(spawn({"subagent_type": "agent-orchestrator:planner", "model": "pool-fable", "name": "p"},
+                      env_extra=V_NEW))
+        self.assertEqual(o["updatedInput"], {"subagent_type": "agent-orchestrator:planner",
+                                             "model": "pool-fable"})
+
+    def test_planner_with_haiku_or_old_haiku_denied(self):
+        for m in ("haiku", "pool-haiku", "pool-haiku-high", "claude-haiku-5-5", "claude-haiku-4-5"):
+            for t in ("planner", "agent-orchestrator:planner"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_pool_haiku_high_scout_only(self):
+        for t in ("scout", "agent-orchestrator:scout"):
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-haiku-high"}), {}, t)
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-haiku"}), {}, t)
+        for t in ("Explore", "claude-code-guide", "statusline-setup"):
+            res = spawn({"subagent_type": t, "model": "pool-haiku-high"})
+            self.assertTrue(is_deny(res), t)
+            self.assertIn("pool-haiku-high is allowed only for scout", reason(res))
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-haiku"}), {}, t)
+
+    def test_pool_haiku_high_denied_for_never_and_other_types(self):
+        for t in ("agent-orchestrator:worker", "agent-orchestrator:verifier",
+                  "agent-orchestrator:final-verifier", "agent-orchestrator:judge",
+                  "agent-orchestrator:security-reviewer", "agent-orchestrator:planner",
+                  "general-purpose", "plan"):
+            for m in ("pool-haiku-high", "pool-haiku", "haiku"):
+                self.assertTrue(is_deny(spawn({"subagent_type": t, "model": m})), (t, m))
+
+    def test_scout_haiku_old_ids_denied(self):
+        for m in ("claude-haiku-4-5", "haiku-4-5", "claude-3-5-haiku-20241022"):
+            self.assertTrue(is_deny(spawn({"subagent_type": "agent-orchestrator:scout", "model": m})), m)
+
+    def test_haiku_never_set_contents(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("mtg", HOOK)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertTrue({"verifier", "final-verifier", "judge", "security-reviewer",
+                         "planner"} <= mod.HAIKU_NEVER)
+        self.assertFalse(mod.HAIKU_NEVER & mod.HAIKU_OK)
+        self.assertEqual(mod.HAIKU_HIGH_OK, {"scout"})
+
+    def test_planner_pinned_no_model_allowed(self):
+        for t in ("agent-orchestrator:planner", "planner"):   # no model: resolves to the frontmatter pin
+            self.assertEqual(spawn({"subagent_type": t}), {}, t)
+            self.assertEqual(spawn({"subagent_type": t, "model": "inherit"}), {}, t)
+
+    def test_sonnet_high_pool_allowed(self):
+        for t in ("agent-orchestrator:verifier", "agent-orchestrator:worker", "general-purpose"):
+            self.assertEqual(spawn({"subagent_type": t, "model": "pool-sonnet-high"}), {}, t)
+
+
 class TestNameStrip(unittest.TestCase):
     TI = {"subagent_type": "agent-orchestrator:verifier", "prompt": "p", "description": "d", "name": "v1"}
 

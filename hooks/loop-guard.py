@@ -27,13 +27,20 @@
 #     must end with its handoff summary as its final message.
 # State: JSON per (session_id, agent_id) under $LOOP_GUARD_STATE_DIR, else
 # ${XDG_CACHE_HOME:-~/.cache}/agent-orchestrator/ (fallback $TMPDIR); files older than 3 days
-# are pruned. LOOP_GUARD_DISABLE=1 turns the hook off. LOOP_GUARD_NOW overrides the clock (tests).
+# are pruned. 1.10.1 hardening: (a) the $TMPDIR fallback dir is used only if it is a real
+# directory (not a symlink) owned by us with mode 0700, else it is skipped (fail open); the state
+# file is opened with O_NOFOLLOW. (b) Watched Bash commands are stored only as a sha256 hex digest,
+# never as plaintext. (c) Per-file state keys are capped (oldest first); a watched command or path
+# is normalised (strip + collapse whitespace) and hashed in full, but the regexes only ever see
+# at most MAX_CMD_LEN chars of it (head + tail), so over-long input is still watched (padding does
+# not evade the polling rule) while regex cost stays bounded. LOOP_GUARD_DISABLE=1 turns the hook off. LOOP_GUARD_NOW overrides the clock (tests).
 # Limits: a model that alternates two different watched calls evades the streak rule (the window
 # rule still catches identical repeats); wall-clock starts at the first tool call the hook sees.
 import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 import time
@@ -49,9 +56,11 @@ WATCHED_TOOLS = {"ListAgents", "TaskOutput", "TaskGet", "TaskList", "BashOutput"
 OUT_PATH = r"(?:/tasks/[^/\s'\"]+\.output|/claude-\d+/[^\s'\"]*\.output)"
 OUT_PATH_RE = re.compile(OUT_PATH + r"(?![\w.])")
 READ_POLL = re.compile(OUT_PATH + r"$")
-BASH_SLEEP_ONLY = re.compile(r"^\s*sleep\s+[\d.smhd]+\s*$")        # the whole command is `sleep N`
+BASH_SLEEP_ONLY = re.compile(r"^\s*sleep\s+[\d.smhd]+\s*(?:\s#.*)?$")   # whole command is `sleep N` (+ optional # comment)
 BASH_READER = re.compile(r"\b(sleep|tail|cat|head|wc|ls|stat)\b")
 BACKOFF_BASE, BACKOFF_CAP = 30, 600
+MAX_CMD_LEN = 4096     # regexes see at most this many chars (bounds CPU); signatures hash the full string
+MAX_KEYS = 200         # cap on distinct signatures kept in `recent` / `last_allowed`
 
 def env_num(name, default):
     try:
@@ -67,6 +76,18 @@ def emit(decision, text):
         out.update(additionalContext=text)   # no permissionDecision: a warning must not bypass permission prompts
     print(json.dumps({"hookSpecificOutput": out}))
 
+def norm(text):
+    """Strip and collapse whitespace, so padding cannot make identical calls look different."""
+    return " ".join(text.split())
+
+def scan_view(text):
+    """The part of an already-normalised string the regexes may see: all of it, or for over-long input
+    the first and last MAX_CMD_LEN//2 chars (head for the command, tail for end-anchored `.output`)."""
+    if len(text) <= MAX_CMD_LEN:
+        return text
+    h = MAX_CMD_LEN // 2
+    return text[:h] + text[-h:]
+
 def signature(tool, ti):
     """Return a string identifying a watched status-check call, or None if not watched."""
     if not isinstance(ti, dict):
@@ -75,28 +96,72 @@ def signature(tool, ti):
         return tool + ":" + hashlib.sha256(json.dumps(ti, sort_keys=True, default=str).encode()).hexdigest()[:16]
     if tool == "Bash":
         cmd = ti.get("command")
-        if isinstance(cmd, str) and (BASH_SLEEP_ONLY.match(cmd) or
-                                     (OUT_PATH_RE.search(cmd) and BASH_READER.search(cmd))):
-            return "Bash:" + " ".join(cmd.split())
+        if isinstance(cmd, str):
+            full = norm(cmd)
+            view = scan_view(full)
+            # whole-command `sleep N`: single line only (norm() folds newlines, which would let a
+            # `# comment` swallow a following command), and over-long input only when the length
+            # comes from a trailing comment (so a long command that merely starts like a sleep is not)
+            head = full[:MAX_CMD_LEN]
+            sleep_only = ("\n" not in cmd.strip() and BASH_SLEEP_ONLY.match(head) is not None
+                          and (len(full) <= MAX_CMD_LEN or " #" in head))
+            if sleep_only or (OUT_PATH_RE.search(view) and BASH_READER.search(view)):
+                # hashed (full normalised string): the state file never holds a plaintext command
+                return "Bash:" + hashlib.sha256(full.encode()).hexdigest()[:16]
     if tool == "Read":
         p = ti.get("file_path")
-        if isinstance(p, str) and READ_POLL.search(p):
-            return "Read:%s:%s:%s" % (p, ti.get("offset"), ti.get("limit"))
+        if isinstance(p, str):
+            full = norm(p)
+            if READ_POLL.search(scan_view(full)):
+                return "Read:" + hashlib.sha256(
+                    ("%s:%s:%s" % (full, ti.get("offset"), ti.get("limit"))).encode()).hexdigest()[:16]
     return None
 
+def safe_private_dir(d):
+    """True iff d is a real directory (not a symlink) owned by us with mode exactly 0700."""
+    try:
+        st = os.lstat(d)
+    except OSError:
+        return False
+    return (stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid()
+            and stat.S_IMODE(st.st_mode) == 0o700)
+
 def state_dir():
-    cands = [os.environ.get("LOOP_GUARD_STATE_DIR"),
-             os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "agent-orchestrator"),
-             os.path.join(tempfile.gettempdir(), "agent-orchestrator")]
-    for d in cands:
+    # (path, must_be_private): the shared-tmp fallback is attacker-reachable, so it is only used
+    # when lstat shows our own 0700 directory; explicit/cache locations keep the old behaviour.
+    cands = [(os.environ.get("LOOP_GUARD_STATE_DIR"), False),
+             (os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "agent-orchestrator"), False),
+             (os.path.join(tempfile.gettempdir(), "agent-orchestrator"), True)]
+    for d, strict in cands:
         if d:
             try:
+                if strict and not os.path.lexists(d):
+                    os.mkdir(d, 0o700)
+                    # mkdir mode is subject to umask: force 0700, but only on the dir we just made,
+                    # via an O_NOFOLLOW fd so a swapped-in symlink is never chmod'ed
+                    dfd = os.open(d, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+                    try:
+                        os.fchmod(dfd, 0o700)
+                    finally:
+                        os.close(dfd)
+                if strict and not safe_private_dir(d):
+                    continue
                 os.makedirs(d, mode=0o700, exist_ok=True)
                 if os.access(d, os.W_OK):
                     return d
             except OSError:
                 continue
     return None
+
+def cap_keys(st):
+    """Bound the per-signature maps: keep the MAX_KEYS most recently allowed signatures."""
+    last = st.get("last_allowed")
+    if not isinstance(last, dict) or len(last) <= MAX_KEYS:
+        return
+    keep = set(sorted(last, key=lambda k: last[k])[-MAX_KEYS:])
+    st["last_allowed"] = {k: v for k, v in last.items() if k in keep}
+    if isinstance(st.get("recent"), dict):
+        st["recent"] = {k: v for k, v in st["recent"].items() if k in keep}
 
 def prune(d, now):
     try:
@@ -136,6 +201,7 @@ def check_poll(st, sig, tool, now):
     recent.append(now)
     st.setdefault("recent", {})[sig] = recent[-50:]
     st.setdefault("last_allowed", {})[sig] = now
+    cap_keys(st)
     return None
 
 def check_stops(st, now):
@@ -206,8 +272,12 @@ def main():
     new = not os.path.exists(path)
     if new:
         prune(d, now)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "r+") as f:
+        try:
+            os.fchmod(fd, 0o600)   # creation mode is subject to umask; a 0400 file could not be reopened
+        except OSError:
+            pass
         if fcntl:
             fcntl.flock(f, fcntl.LOCK_EX)
         try:
