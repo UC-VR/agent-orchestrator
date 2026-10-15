@@ -17,13 +17,13 @@ Before spawning any worker, the orchestrator runs a routing step:
 1. **Enumerate** what is actually available *this session* — the skills exposed via the Skill tool and the agent types available to the Agent tool, read from the live list injected into context (never a hardcoded/remembered list, which goes stale).
 2. **Match** the task against them — does a specific skill or specialized agent fit better than a generic subagent?
 3. **Prefer the specific over the generic** — invoke the matching skill or specialized agent when there is a clear fit.
-4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing specific fits, it picks the generic agent by task shape — the `worker`-vs-`general-purpose` tie-breaker. It **defaults to the `worker`** agent for any task whose path is already known: well-scoped, mechanical execution — applying a specified edit, a routine refactor, running a command/test, gathering named files (`worker` is the more specific tool here, carrying the craftsmanship principles and a cheaper tier, so it wins these ties). It **reserves `general-purpose`** for open-ended, exploratory, or multi-step research where the path is *not* known up front — locating something when you're unsure of the first hit, or work whose steps only emerge as you go. Tie-breaker question: *is the what-and-where already specified?* If yes → `worker`; if it still needs discovery → `general-purpose`.
+4. **Log the choice** in one line: `Routing via <skill/agent> because <reason>.` If nothing specific fits, it picks the generic agent by task shape — the `worker`-vs-`generalist` tie-breaker. It **defaults to the `worker`** agent for any task whose path is already known: well-scoped, mechanical execution — applying a specified edit, a routine refactor, running a command/test, gathering named files (`worker` is the more specific tool here, carrying the craftsmanship principles and a cheaper tier, so it wins these ties). It **prefers `generalist`** (`agent-orchestrator:generalist`, pinned `pool-sonnet-high`; built-in `general-purpose` with `model: sonnet` is the fallback only) for open-ended, exploratory, or multi-step research where the path is *not* known up front — locating something when you're unsure of the first hit, or work whose steps only emerge as you go. Tie-breaker question: *is the what-and-where already specified?* If yes → `worker`; if it still needs discovery → `generalist`.
 
 This keeps routing **current** (reads the live list) and **auditable** (logs the why).
 
 The repo also ships a **`planner`** agent (`agents/planner.md`, `model: pool-fable`, tools Read/Glob/Grep only; its Read/Grep calls get the secret-path deny since 1.10.2): the orchestrator's planning step. It returns a plan (goal, subtasks with deliverable, acceptance check and suggested agent, ordering, risks, open questions) and does not edit code, run commands or fetch the web; when web content is needed the orchestrator has a `worker` fetch it and passes the planner a summary, and commands, URLs and dependencies in a plan are unverified until a worker or verifier checks them. `pool-fable` is allowed by the model-tier gate for `subagent_type` `agent-orchestrator:planner` only.
 
-The repo also ships two **opt-in** replacements for the built-ins (1.10.2): **`explorer`** (`agents/explorer.md`, `model: pool-haiku-high`, tools Read/Grep/Glob/Bash, `maxTurns: 40`; a read-only locator that writes no files and returns a fixed Answer/Evidence/Gaps report; its Bash is gated by the scout read-only gate and Read/Grep by the secret-path deny) and **`generalist`** (`agents/generalist.md`, `model: pool-sonnet-high`, full working toolset, `maxTurns: 150`; one self-contained investigate-and-change task, fixed four-part report, no spawning). The turn caps use the `maxTurns` agent frontmatter field (a positive integer, supported by Claude Code 2.1.300). The orchestrator keeps built-in `Explore` and `general-purpose` as the default; opt-in pending eval, switch only after eval shows quality no worse.
+The repo also ships two replacements for the built-ins (1.10.2): **`explorer`** (`agents/explorer.md`, `model: pool-haiku-high`, tools Read/Grep/Glob/Bash, `maxTurns: 40`; a read-only locator that writes no files and returns a fixed Answer/Evidence/Gaps report; its Bash is gated by the scout read-only gate and Read/Grep by the secret-path deny) and **`generalist`** (`agents/generalist.md`, `model: pool-sonnet-high`, full working toolset, `maxTurns: 150`; one self-contained investigate-and-change task, fixed four-part report, no spawning). The turn caps use the `maxTurns` agent frontmatter field (a positive integer, supported by Claude Code 2.1.300). Since 1.10.3 the orchestrator **prefers `generalist`** over built-in `general-purpose` for open-ended work, while built-in `Explore` (`model: haiku`) stays the default for lookups and `explorer` stays opt-in: it is local read-only and cannot ssh or inspect services, so it is not for host or cross-host lookups. See the v1.10.3 changelog entry.
 
 The repo also ships a **`worker`** agent: the default leaf executor for minor, well-scoped tasks, running on a cheaper model tier with built-in craftsmanship principles (think-before-coding, simplicity, surgical changes, goal-driven verification).
 
@@ -65,10 +65,10 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
   |---|---|
   | `orchestrator` | `pool-opus` |
   | `planner` | `pool-fable` |
-  | `worker`, `general-purpose` | `pool-sonnet` |
+  | `worker`, `general-purpose` (fallback) | `pool-sonnet` |
   | `scout`, `Explore`, summaries | `pool-haiku` (`scout` may also use `pool-haiku-high`) |
-  | `explorer` (opt-in, replaces `Explore`) | `pool-haiku-high` |
-  | `generalist` (opt-in, replaces `general-purpose`) | `pool-sonnet-high` |
+  | `explorer` (opt-in, local read-only lookups only) | `pool-haiku-high` |
+  | `generalist` (preferred over `general-purpose`) | `pool-sonnet-high` |
   | `judge` | `pool-opus` |
   | `security-reviewer` | `pool-opus-high` |
   | `verifier` (pre-final rounds) | `pool-sonnet-high` |
@@ -194,6 +194,13 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.10.3
+
+- **1.10.3: `generalist` preferred over `general-purpose`; `explorer` stays opt-in.** Eval-driven (blind judge, one run per side; full eval at `/home/vr/HBM/subagent-eval-2026-10-15.md`).
+  - **`generalist` is now preferred** for open-ended or multi-step work where the path is not known. It tied built-in `general-purpose` on 2 multi-step tasks (mean 4.58 vs 4.615) with about 37% fewer tokens, so quality is no worse. Built-in `general-purpose` with `model: sonnet` is the fallback only. The dispatch step 4 tie-breaker, step 5 and the tier map follow.
+  - **`explorer` stays opt-in; built-in `Explore` (`model: haiku`) remains the default for lookups.** `explorer` scored -0.79 vs `Explore` on lookups (mean 3.82 vs 4.61) because its scout-derived read-only gate blocks ssh, `bash -lc`, ss, systemctl, docker and crontab, which hurts host and cross-host lookups. Do not use it for those.
+  - Version bump only otherwise; no hook changes.
 
 ### v1.10.2
 
