@@ -71,6 +71,8 @@ def deny(reason):
     sys.exit(0)
 
 
+GATED_TYPES = ("scout", "explorer")
+
 def is_scout_caller(data):
     """Positive-identification only: True iff we can affirmatively say this
     tool call was made by the scout subagent. Anything ambiguous -> False,
@@ -82,7 +84,7 @@ def is_scout_caller(data):
     if not isinstance(atype, str) or not atype.strip():
         return False
     bare = atype.strip().lower().split(":")[-1]  # strip "plugin:" prefix if present
-    return bare == "scout"
+    return bare in GATED_TYPES  # scout, and explorer (1.10.2: same read-only Bash contract)
 
 
 def normalize_cmd_token(tok):

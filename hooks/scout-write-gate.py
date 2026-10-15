@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PreToolUse gate (matcher Write|Edit|MultiEdit|NotebookEdit): the `scout` subagent may
+# PreToolUse gate (matcher Write|Edit|MultiEdit|NotebookEdit|Read|Grep): the `scout` subagent may
 # Write ONLY briefing files (basename `briefing.md` or `*_briefing.md`). FAIL-OPEN for
 # every other caller and for malformed input; FAIL-CLOSED for scout once identified (any
 # internal error -> deny). Plugin subagents ignore frontmatter hooks, so this is registered
@@ -41,14 +41,23 @@ def deny(reason):
         "permissionDecisionReason": reason}})
 
 
-def is_scout_caller(data):
+# 1.10.2: scout keeps its briefing-only Write rule. explorer and planner (read-only agents with
+# no Write tool) get the Read/Grep secret-path deny, and any write-class call by them is denied.
+READ_GATED = ("scout", "explorer", "planner")
+
+def caller_type(data):
+    """Bare agent type if this call is from a gated subagent, else None (fail-open for everyone else)."""
     agent_id = data.get("agent_id")
     if not agent_id:
-        return False
+        return None
     atype = data.get("agent_type")
     if not isinstance(atype, str) or not atype.strip():
-        return False
-    return atype.strip().lower().split(":")[-1] == "scout"
+        return None
+    bare = atype.strip().lower().split(":")[-1]
+    return bare if bare in READ_GATED else None
+
+def is_scout_caller(data):
+    return caller_type(data) is not None
 
 
 def path_problem(p):
@@ -62,6 +71,7 @@ def path_problem(p):
 
 def evaluate(data):
     tool = data.get("tool_name")
+    who = caller_type(data) or "scout"
     if is_secret_path is None or secret_content is None:
         return "scout-write-gate cannot load its secret helper (fail-closed)"
     ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
@@ -69,8 +79,10 @@ def evaluate(data):
         for key in ("file_path", "path", "glob"):
             v = ti.get(key)
             if isinstance(v, str) and v and is_secret_path(v):
-                return "scout may not read secret-bearing files (%s: %s)" % (key, v)
+                return "%s may not read secret-bearing files (%s: %s)" % (who, key, v)
         return None
+    if who != "scout":
+        return "%s is read-only; it may not use %s" % (who, tool)
     if tool != "Write":
         return "scout may not use %s; it may only Write *_briefing.md files" % tool
     ti = data.get("tool_input")

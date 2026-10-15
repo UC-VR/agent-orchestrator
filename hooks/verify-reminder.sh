@@ -9,7 +9,7 @@
 # high-stakes work. It does NOT block, fail, or force anything — Claude is free to
 # ignore the nudge. The orchestrator's own judgement still decides whether to verify.
 #
-# Loop-guard: if the spawned agent IS the verifier, judge, scout, or security-reviewer, we emit `{}`
+# Loop-guard: if the spawned agent IS the verifier, judge, scout, security-reviewer, or planner, we emit `{}`
 # (no reminder) so we never nag the model to verify the verifier — which would
 # invite an infinite loop.
 #
@@ -40,10 +40,10 @@ agent_type_lc="$(printf '%s' "$agent_type" | tr '[:upper:]' '[:lower:]')"
 # "namespace:" prefix so the comparison below matches the bare role name.
 agent_type_bare="${agent_type_lc##*:}"
 
-# Loop-guard: spawning verifier/final-verifier/judge/scout/security-reviewer -> no reminder (all
+# Loop-guard: spawning verifier/final-verifier/judge/scout/security-reviewer/planner -> no reminder (all
 # are read-only checking/advisory roles; nagging them to "go verify" recreates
 # the verify-the-verifier loop).
-if [ "$agent_type_bare" = "verifier" ] || [ "$agent_type_bare" = "final-verifier" ] || [ "$agent_type_bare" = "judge" ] || [ "$agent_type_bare" = "scout" ] || [ "$agent_type_bare" = "security-reviewer" ]; then
+if [ "$agent_type_bare" = "verifier" ] || [ "$agent_type_bare" = "final-verifier" ] || [ "$agent_type_bare" = "judge" ] || [ "$agent_type_bare" = "scout" ] || [ "$agent_type_bare" = "security-reviewer" ] || [ "$agent_type_bare" = "planner" ]; then
   printf '%s\n' '{}'
   exit 0
 fi

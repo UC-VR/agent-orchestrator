@@ -267,7 +267,7 @@ class TestPlannerPool(unittest.TestCase):
         self.assertTrue({"verifier", "final-verifier", "judge", "security-reviewer",
                          "planner"} <= mod.HAIKU_NEVER)
         self.assertFalse(mod.HAIKU_NEVER & mod.HAIKU_OK)
-        self.assertEqual(mod.HAIKU_HIGH_OK, {"scout"})
+        self.assertEqual(mod.HAIKU_HIGH_OK, {"scout", "explorer"})
 
     def test_planner_pinned_no_model_allowed(self):
         for t in ("agent-orchestrator:planner", "planner"):   # no model: resolves to the frontmatter pin

@@ -1,5 +1,5 @@
 {
-  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: briefing files only, no secret values; Read|Grep: no secret paths) security-reviewer default-deny gate (Bash allowlist; Read|Grep: no secret paths) and loop-guard (all tools: blocks tight status-polling / TaskStop churn, warns then blocks subagents past ~150 tool calls or 4h). Per-hook rationale lives in each script's header comment.",
+  "description": "agent-orchestrator hooks: PostToolUse Agent|Task soft verify-reminder (non-blocking nudge), SessionEnd journal, SessionStart version-check, PreToolUse model-tier gate (Agent|Task) scout/explorer read-only gate (Bash), scout write gate (Write|Edit|MultiEdit|NotebookEdit: scout briefing files only, no secret values; Read|Grep: no secret paths for scout, explorer and planner) security-reviewer default-deny gate (Bash allowlist; Read|Grep: no secret paths) and loop-guard (all tools: blocks tight status-polling / TaskStop churn, warns then blocks subagents past ~150 tool calls or 4h). Per-hook rationale lives in each script's header comment.",
   "hooks": {
     "PostToolUse": [
       {

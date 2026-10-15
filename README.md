@@ -21,7 +21,9 @@ Before spawning any worker, the orchestrator runs a routing step:
 
 This keeps routing **current** (reads the live list) and **auditable** (logs the why).
 
-The repo also ships a **`planner`** agent (`agents/planner.md`, `model: pool-fable`, tools Read/Glob/Grep only): the orchestrator's planning step. It returns a plan (goal, subtasks with deliverable, acceptance check and suggested agent, ordering, risks, open questions) and does not edit code, run commands or fetch the web; when web content is needed the orchestrator has a `worker` fetch it and passes the planner a summary, and commands, URLs and dependencies in a plan are unverified until a worker or verifier checks them. `pool-fable` is allowed by the model-tier gate for `subagent_type` `agent-orchestrator:planner` only.
+The repo also ships a **`planner`** agent (`agents/planner.md`, `model: pool-fable`, tools Read/Glob/Grep only; its Read/Grep calls get the secret-path deny since 1.10.2): the orchestrator's planning step. It returns a plan (goal, subtasks with deliverable, acceptance check and suggested agent, ordering, risks, open questions) and does not edit code, run commands or fetch the web; when web content is needed the orchestrator has a `worker` fetch it and passes the planner a summary, and commands, URLs and dependencies in a plan are unverified until a worker or verifier checks them. `pool-fable` is allowed by the model-tier gate for `subagent_type` `agent-orchestrator:planner` only.
+
+The repo also ships two **opt-in** replacements for the built-ins (1.10.2): **`explorer`** (`agents/explorer.md`, `model: pool-haiku-high`, tools Read/Grep/Glob/Bash, `maxTurns: 40`; a read-only locator that writes no files and returns a fixed Answer/Evidence/Gaps report; its Bash is gated by the scout read-only gate and Read/Grep by the secret-path deny) and **`generalist`** (`agents/generalist.md`, `model: pool-sonnet-high`, full working toolset, `maxTurns: 150`; one self-contained investigate-and-change task, fixed four-part report, no spawning). The turn caps use the `maxTurns` agent frontmatter field (a positive integer, supported by Claude Code 2.1.300). The orchestrator keeps built-in `Explore` and `general-purpose` as the default; opt-in pending eval, switch only after eval shows quality no worse.
 
 The repo also ships a **`worker`** agent: the default leaf executor for minor, well-scoped tasks, running on a cheaper model tier with built-in craftsmanship principles (think-before-coding, simplicity, surgical changes, goal-driven verification).
 
@@ -65,16 +67,18 @@ The orchestrator matches model strength to task difficulty — and since v1.6.0 
   | `planner` | `pool-fable` |
   | `worker`, `general-purpose` | `pool-sonnet` |
   | `scout`, `Explore`, summaries | `pool-haiku` (`scout` may also use `pool-haiku-high`) |
+  | `explorer` (opt-in, replaces `Explore`) | `pool-haiku-high` |
+  | `generalist` (opt-in, replaces `general-purpose`) | `pool-sonnet-high` |
   | `judge` | `pool-opus` |
   | `security-reviewer` | `pool-opus-high` |
   | `verifier` (pre-final rounds) | `pool-sonnet-high` |
   | `final-verifier` (last gate before delivery or push) | `pool-opus` |
   | lint-style checks | `pool-sonnet-low` |
 
-  **Haiku only for `scout`/`Explore`/`claude-code-guide`/`statusline-setup`**, and `pool-haiku-high` for `scout` only (never verification, judgement, planning, code edits or security review; Haiku 4.x/3.x denied).
+  **Haiku only for `scout`/`explorer`/`Explore`/`claude-code-guide`/`statusline-setup`**, and `pool-haiku-high` for `scout` and `explorer` only (never `generalist`, verification, judgement, planning, code edits or security review; Haiku 4.x/3.x denied).
 - **Why `final-verifier` is a separate agent.** The Agent tool's `model` parameter is an enum (`sonnet|opus|haiku|fable`) and cannot carry a pool id, so a per-call override to `pool-opus` is not possible. `agents/final-verifier.md` is the `verifier` contract pinned to `pool-opus`; the orchestrator uses `verifier` for bounded pre-final rounds and `final-verifier` for the last pass.
 - **Gap (built-ins).** `general-purpose` and `Explore` can only be given an alias (`sonnet`/`haiku`); it routes to `pool-sonnet`/`pool-haiku` only if the host maps aliases to pools (e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=pool-sonnet`, `ANTHROPIC_DEFAULT_HAIKU_MODEL=pool-haiku`). This plugin does not edit host settings.
-- A `PreToolUse` **`model-tier-gate`** hook denies any `fable` spawn (sole exception: exactly `pool-fable` with `subagent_type` `agent-orchestrator:planner`), denies `haiku` for every agent type outside the allowlist above (and Haiku 4.x/3.x ids everywhere), and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, `security-reviewer`) resolve their own frontmatter pool. Matching is by substring, so pool ids behave like aliases (`pool-fable*` denied except `pool-fable` for `agent-orchestrator:planner`, `pool-haiku` allowlisted types only, `pool-haiku-high` `scout` only). It fails open on any internal error, so it never bricks spawning.
+- A `PreToolUse` **`model-tier-gate`** hook denies any `fable` spawn (sole exception: exactly `pool-fable` with `subagent_type` `agent-orchestrator:planner`), denies `haiku` for every agent type outside the allowlist above (and Haiku 4.x/3.x ids everywhere), and denies unpinned built-in types (e.g. `general-purpose`, `Explore`, `Plan`, `claude-code-guide`) spawned with no explicit model — while letting pinned agents (`worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, `explorer`, `generalist`, `security-reviewer`) resolve their own frontmatter pool. Matching is by substring, so pool ids behave like aliases (`pool-fable*` denied except `pool-fable` for `agent-orchestrator:planner`, `pool-haiku` allowlisted types only, `pool-haiku-high` `scout` and `explorer` only). It fails open on any internal error, so it never bricks spawning.
 - The same hook (since v1.7.2) handles Agent/Task spawns that pass a `name` param: Claude Code's in-process teammate path (anthropics/claude-code#81746, #78234, #31977) silently drops the requested agent definition and degrades the spawn to a fixed reduced tool profile when `name` is set. Since v1.8.6 the hook strips `name` (plus teammate-only `team_name`/`teamName`/`mode`) via `updatedInput` and lets the spawn proceed as a plain subagent when the CLI is ≥ 2.1.290 (the other tier rules still apply to the stripped input); on an older or undetectable CLI it denies instead. Track agents by the ID the tool call returns and use it with `SendMessage` for follow-ups. Escape hatch for tmux-mode experiments: `ORCHESTRATOR_ALLOW_NAMED_SPAWNS=1` (keeps `name`, no strip).
 - (Since v1.7.3) That named-spawn check only runs when the incoming call's `tool_name` is `Agent` or `Task` — any other tool (e.g. `Bash`, which also accepts a `name`-shaped argument for unrelated reasons) is allowed through untouched. This keeps the gate scoped to spawns even though its `hooks.json` matcher already restricts it to `Agent|Task`, so the script enforces the same scope it claims.
 
@@ -150,14 +154,14 @@ Prefer to let Claude Code do the install for you? Paste the prompt below into a 
 > 1. Add the marketplace and install the plugin:
 >    - Run `/plugin marketplace add https://github.com/UC-VR/agent-orchestrator.git`
 >    - Run `/plugin install agent-orchestrator@agent-orchestrator`
->    The plugin ships the `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
+>    The plugin ships the `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, `security-reviewer`, `explorer`, and `generalist` agents plus the `PostToolUse:Agent` reminder hook (`hooks/hooks.json` → `hooks/verify-reminder.sh`); these load automatically once installed, with `${CLAUDE_PLUGIN_ROOT}` resolved for me — I do not need to copy files by hand.
 > 2. Before changing any settings, back up my global settings: copy `~/.claude/settings.json` to `~/.claude/settings.json.bak` (skip if the file does not exist).
 > 3. Apply the machine-local settings that do NOT travel in a plugin, merging into existing config rather than overwriting it — never drop my existing hooks, permissions, or other keys:
 >    - Set the orchestrator thread to a strong model (e.g. Opus) via `/config`.
 >    - Agent teams are disabled fleet-wide (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` since 2026-10-06): teammate tools are clamped to the lead's and hook payloads lose the agent type. Named spawns are plain subagents; track by returned ID. Do not enable them.
 >    - If I want the orchestrator to be the main thread, point my `agent` setting at it (or note that I can launch with `claude --agent orchestrator`).
 >    - Approve the tool/command permissions the orchestrator and its subagents need (Bash, file writes, network) when prompted.
-> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, and `security-reviewer` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
+> 4. Verify the install: confirm `agent-orchestrator` shows up via `/plugin` (installed), that `orchestrator`, `worker`, `planner`, `verifier`, `final-verifier`, `judge`, `scout`, `security-reviewer`, `explorer`, and `generalist` are listed as available agents, and that a `PostToolUse` hook with matcher `Agent|Task` running `verify-reminder.sh` is registered. Report exactly what you changed and anything you skipped.
 >
 > Prerequisite: the reminder hook is a POSIX shell script, so on Windows make sure an `sh` (e.g. Git Bash) is available to Claude Code. `jq` is not required.
 
@@ -190,6 +194,18 @@ Once installed, route your requests through the orchestrator agent. Hand it a go
 For trivial or conversational follow-ups it answers directly; everything else gets delegated.
 
 ## Changelog
+
+### v1.10.2
+
+- **1.10.2: opt-in `explorer` and `generalist` agents, gate follow-ups.**
+  - **New `explorer` agent** (`agents/explorer.md`, `model: pool-haiku-high`, tools Read/Grep/Glob/Bash, `maxTurns: 40`): read-only locator with a fixed Answer/Evidence/Gaps report. It writes no files (not even briefings). Bash goes through the scout read-only gate; Read/Grep through the secret-path deny; Write/Edit are denied outright.
+  - **New `generalist` agent** (`agents/generalist.md`, `model: pool-sonnet-high`, full working toolset, `maxTurns` 150): one self-contained investigate-and-change task with a fixed report. Never Haiku (`HAIKU_NEVER`).
+  - **Opt-in only.** The built-ins `Explore` and `general-purpose` stay the orchestrator default pending the eval; switch only after eval shows quality no worse. `maxTurns` is the agent frontmatter turn limit (positive integer; present in Claude Code 2.1.300).
+  - **`model-tier-gate`:** `pool-haiku-high` is now allowed for `scout` and `explorer` (`HAIKU_HIGH_OK`); `generalist` added to `HAIKU_NEVER`. The `pool-fable` rule is unchanged (exact `agent-orchestrator:planner`, `subagent_type` only).
+  - **`verify-reminder.sh`:** `planner` added to the no-reminder list.
+  - **Secret-path Read/Grep deny** (`hooks/scout-write-gate.py`, shared `_secret_paths.py`) extended from scout and security-reviewer to `planner` and `explorer`.
+  - **Known limits.** `explorer` inherits the scout Bash gate's open holes H1/H2 (e.g. `cat -<.netrc`, `git -C .git diff --no-index`), and unlike scout it has no briefing content scan as a backstop. Caller matching is by bare name, so a non-plugin agent named `planner` or `explorer` is over-gated. The Bash gate still fails open on an internal error (existing behaviour). These are best-effort guardrails, not a sandbox.
+  - **Tests:** `hooks/tests/test_explorer_generalist.py` added.
 
 ### v1.10.1
 
